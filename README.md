@@ -138,6 +138,21 @@ python loadtest/burst.py --base http://<INGRESS_IP> --n 100   # T2, p95 기록 �
 Grafana(이중축): NATS consumer lag vs `kube_deployment_status_replicas{deployment="analysis-worker"}`
 → "큐가 차니 KEDA가 늘렸다"를 한 화면에 시각화.
 
+## MongoDB Atlas (영속화 + 벡터검색 / RAG)
+
+1. **Atlas Network Access**: 클러스터를 호출하는 머신/노드의 공인 IP를 IP Access List에 추가(데모는 `0.0.0.0/0`). 미등록 시 `TLSV1_ALERT_INTERNAL_ERROR`로 연결 거부됨.
+2. **시크릿 주입**: `kubectl -n econmind create secret generic api-keys ... --from-literal=MONGODB_URI='mongodb+srv://<user>:<pw>@cluster0.h8e6cfn.mongodb.net/capstone_news?retryWrites=true&w=majority&appName=Cluster0'` (기존 GOOGLE_API_KEY/NEWSAPI_KEY와 함께). 비밀번호는 절대 매니페스트/깃에 넣지 말 것.
+3. **활성화**: `econmind-api`에 `USE_MONGODB=true`(매니페스트 반영됨). `GET /health` → `{"mongodb":"on"}` 확인.
+4. **벡터 인덱스**: 앱 startup이 `articles.embedding`(768d, cosine) `vectorSearch` 인덱스를 자동 생성 시도. 실패 시 **Atlas UI 수동 생성**:
+   - Atlas → Cluster0 → Atlas Search → Create Search Index → JSON Editor → Vector Search
+   - DB `capstone_news`, Collection `articles`, 이름 `vector_index`:
+   ```json
+   { "fields": [ { "type": "vector", "path": "embedding", "numDimensions": 768, "similarity": "cosine" } ] }
+   ```
+5. **확인**: `nvidia` 검색 → Atlas Browse Collections `capstone_news.articles`에 문서 + `embedding`(768) 존재. 리포트 생성 시 api 로그에 `[report] RAG grounded with N similar articles`, `GET /reports/{id}` 응답에 `verification`·`rag_sources`.
+
+> worker는 burst 재현성 위해 `USE_MONGODB=false` 유지(임베딩/DB 호출이 burst 타이밍에 영향 X).
+
 ## 백업 트리거 (KEDA nats-jetstream 설정 난항 시)
 `k8s/keda-scaledobject.yaml`의 trigger를 CPU 기반으로 교체:
 ```yaml

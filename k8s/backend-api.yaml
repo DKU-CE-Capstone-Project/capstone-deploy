@@ -39,6 +39,15 @@ spec:
             # gemini-flash-latest(3.5, 20/day)·2.0-flash(0)는 쿼터 막힘 → lite가 무료 쿼터 넉넉
             - name: GEMINI_MODEL
               value: "gemini-2.5-flash-lite"
+            # MongoDB Atlas: 영속화 + 벡터검색(RAG). Atlas IP 화이트리스트 필요.
+            - name: USE_MONGODB
+              value: "true"
+            - name: EMBEDDING_MODEL
+              value: "gemini-embedding-001"
+            - name: USE_RAG
+              value: "true"
+            - name: USE_CRITIC
+              value: "true"
             - name: CORS_ORIGINS
               value: "*"
             - name: GOOGLE_API_KEY
@@ -52,6 +61,12 @@ spec:
                 secretKeyRef:
                   name: api-keys
                   key: NEWSAPI_KEY
+                  optional: true
+            - name: MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: api-keys
+                  key: MONGODB_URI
                   optional: true
           readinessProbe:
             httpGet:
