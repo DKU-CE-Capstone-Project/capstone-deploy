@@ -25,22 +25,14 @@ spec:
               value: "nats://nats.default.svc.cluster.local:4222"
             - name: REDIS_URL
               value: "redis://redis:6379/0"
+            # worker(burst 데모): mock + 고정지연으로 재현성 유지
             - name: DEMO_MODE
               value: "true"
             - name: USE_MOCK_NEWS
               value: "true"
+            # burst 중 Gemini 호출/쿼터 소진 방지 — 빈 값으로 LLM 비활성(즉시 fallback)
             - name: GOOGLE_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: api-keys
-                  key: GOOGLE_API_KEY
-                  optional: true
-            - name: NEWSAPI_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: api-keys
-                  key: NEWSAPI_KEY
-                  optional: true
+              value: ""
           resources:
             requests:
               cpu: "100m"

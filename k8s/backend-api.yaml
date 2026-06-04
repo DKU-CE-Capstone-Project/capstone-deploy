@@ -25,10 +25,20 @@ spec:
               value: "nats://nats.default.svc.cluster.local:4222"
             - name: REDIS_URL
               value: "redis://redis:6379/0"
+            # API(UI 제품 데모): 실시간 뉴스 + Gemini 리포트
             - name: DEMO_MODE
-              value: "true"
+              value: "false"
             - name: USE_MOCK_NEWS
-              value: "true"
+              value: "false"
+            # GDELT가 429/타임아웃인 환경 → NewsAPI 직행 (행 방지)
+            - name: USE_GDELT
+              value: "false"
+            # 무료 Gemini 일일 쿼터 절약: 카드 요약은 description 사용, Gemini는 리포트/전략에만
+            - name: USE_LLM_SUMMARIES
+              value: "false"
+            # gemini-flash-latest(3.5, 20/day)·2.0-flash(0)는 쿼터 막힘 → lite가 무료 쿼터 넉넉
+            - name: GEMINI_MODEL
+              value: "gemini-2.5-flash-lite"
             - name: CORS_ORIGINS
               value: "*"
             - name: GOOGLE_API_KEY
