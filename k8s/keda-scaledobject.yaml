@@ -12,11 +12,21 @@ spec:
   maxReplicaCount: 10
   pollingInterval: 5      # 5초마다 큐 적체 확인
   cooldownPeriod: 30      # idle 30초 후 축소
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          # 기본 5분 안정화 창을 30초로 단축 (데모 그래프가 1→N→1로 깔끔하게 보이도록)
+          stabilizationWindowSeconds: 30
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 15
   triggers:
     - type: nats-jetstream
       metadata:
-        # NATS는 default 네임스페이스에 Helm으로 설치됨. 모니터링 포트 8222.
-        natsServerMonitoringEndpoint: "nats.default.svc.cluster.local:8222"
+        # NATS Helm 설치 시 모니터링(8222)은 nats-headless 서비스에 노출됨.
+        natsServerMonitoringEndpoint: "nats-headless.default.svc.cluster.local:8222"
         account: "$G"
         stream: "analysis"
         consumer: "analysis-workers"

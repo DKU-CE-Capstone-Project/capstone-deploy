@@ -24,7 +24,50 @@ python loadtest/burst.py --base http://localhost:8000 --n 100
 ```
 UI: http://localhost:8080  ·  API: http://localhost:8000/health
 
-## 1. VM + k3s + Helm
+## 1-A. 로컬 kind 배포 (✅ 검증 완료 — KEDA 자동확장 + Grafana 확인)
+
+VM 없이 Mac의 Docker 위에서 실제 K8s를 띄워 동일하게 검증. 매니페스트는 VM k3s에 1:1 이전 가능.
+
+```bash
+brew install kind helm
+kind create cluster --name econmind
+
+# CNCF 컴포넌트
+helm repo add nats https://nats-io.github.io/k8s/helm/charts/
+helm repo add kedacore https://kedacore.github.io/charts
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm install nats nats/nats --set config.jetstream.enabled=true --set config.monitor.enabled=true
+helm install keda kedacore/keda -n keda --create-namespace --wait
+helm install kps prometheus-community/kube-prometheus-stack -n monitoring --create-namespace \
+  --set alertmanager.enabled=false --set grafana.adminPassword=econmind --wait
+
+# 이미지 빌드 → kind로 로드 (레지스트리 불필요)
+docker build -t ghcr.io/dku-ce-capstone-project/econmind-backend:demo ../backend
+docker build --build-arg VITE_API_BASE="" -t ghcr.io/dku-ce-capstone-project/econmind-frontend:demo ../frontend
+kind load docker-image ghcr.io/dku-ce-capstone-project/econmind-backend:demo --name econmind
+kind load docker-image ghcr.io/dku-ce-capstone-project/econmind-frontend:demo --name econmind
+
+# 배포 (ingress는 kind에 Traefik 없으니 제외 → port-forward 사용)
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/redis.yaml -f k8s/backend-api.yaml -f k8s/backend-worker.yaml -f k8s/frontend.yaml -f k8s/keda-scaledobject.yaml
+
+# 접근
+kubectl -n econmind port-forward svc/econmind-api 8000:8000 &      # API/burst
+kubectl -n monitoring port-forward svc/kps-grafana 3000:80 &       # Grafana (admin/econmind)
+```
+
+burst + KEDA 자동확장 관찰:
+```bash
+kubectl -n econmind get pods -w -l app=analysis-worker &   # worker 1→N 자동 생성 관찰
+python loadtest/burst.py --base http://localhost:8000 --n 60
+kubectl -n econmind get hpa     # KEDA가 NATS lag 측정: 0/5 (avg)
+```
+Grafana Explore PromQL: `kube_deployment_status_replicas{namespace="econmind",deployment="analysis-worker"}`
+
+> **NATS 모니터링 포트(8222)는 `nats-headless` 서비스에 노출**됨 → ScaledObject의 `natsServerMonitoringEndpoint`는 `nats-headless.default.svc.cluster.local:8222`.
+
+## 1-B. VM + k3s + Helm
 
 ```bash
 # Ubuntu 22.04 VM (4 vCPU 권장), 80/443/22 방화벽 개방
