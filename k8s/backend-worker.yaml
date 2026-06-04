@@ -1,0 +1,50 @@
+# 분석 worker — KEDA가 NATS 큐 적체 기준으로 1→N 오토스케일하는 대상.
+# replicas는 KEDA가 관리하므로 1로 시작(=minReplicaCount).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analysis-worker
+  namespace: econmind
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: analysis-worker
+  template:
+    metadata:
+      labels:
+        app: analysis-worker
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/dku-ce-capstone-project/econmind-backend:demo
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "app.worker"]
+          env:
+            - name: NATS_URL
+              value: "nats://nats.default.svc.cluster.local:4222"
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            - name: DEMO_MODE
+              value: "true"
+            - name: USE_MOCK_NEWS
+              value: "true"
+            - name: GOOGLE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-keys
+                  key: GOOGLE_API_KEY
+                  optional: true
+            - name: NEWSAPI_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-keys
+                  key: NEWSAPI_KEY
+                  optional: true
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

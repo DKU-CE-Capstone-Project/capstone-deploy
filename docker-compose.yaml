@@ -1,0 +1,50 @@
+# 로컬 검증용 — k3s 이관 전 burst→worker 분산 처리를 먼저 확인한다.
+# 수동 스케일: docker compose up --scale econmind-worker=5
+services:
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-m", "8222"]      # JetStream + 모니터링(8222)
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  econmind-api:
+    build: ../backend
+    environment:
+      NATS_URL: nats://nats:4222
+      REDIS_URL: redis://redis:6379/0
+      DEMO_MODE: "true"
+      USE_MOCK_NEWS: "true"
+      CORS_ORIGINS: "*"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - nats
+      - redis
+
+  econmind-worker:
+    build: ../backend
+    command: ["python", "-m", "app.worker"]
+    environment:
+      NATS_URL: nats://nats:4222
+      REDIS_URL: redis://redis:6379/0
+      DEMO_MODE: "true"
+      USE_MOCK_NEWS: "true"
+    depends_on:
+      - nats
+      - redis
+
+  frontend:
+    build:
+      context: ../frontend
+      args:
+        VITE_API_BASE: ""
+    ports:
+      - "8080:80"
+    depends_on:
+      - econmind-api

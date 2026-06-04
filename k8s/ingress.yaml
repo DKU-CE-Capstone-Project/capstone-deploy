@@ -1,0 +1,21 @@
+# Traefik Ingress (k3s 기본 포함) — 모든 트래픽을 프론트엔드로.
+# 프론트엔드 nginx가 /api·/jobs·/analyze를 econmind-api로 프록시한다.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: econmind-ingress
+  namespace: econmind
+  annotations:
+    spec.ingressClassName: traefik
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: econmind-frontend
+                port:
+                  number: 80

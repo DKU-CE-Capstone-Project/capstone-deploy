@@ -1,0 +1,70 @@
+# EconMind API — 요청 수신 + NATS 발행 + Redis 결과 조회 (replica 1)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: econmind-api
+  namespace: econmind
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: econmind-api
+  template:
+    metadata:
+      labels:
+        app: econmind-api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/dku-ce-capstone-project/econmind-backend:demo
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: NATS_URL
+              value: "nats://nats.default.svc.cluster.local:4222"
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            - name: DEMO_MODE
+              value: "true"
+            - name: USE_MOCK_NEWS
+              value: "true"
+            - name: CORS_ORIGINS
+              value: "*"
+            - name: GOOGLE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-keys
+                  key: GOOGLE_API_KEY
+                  optional: true
+            - name: NEWSAPI_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-keys
+                  key: NEWSAPI_KEY
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: econmind-api
+  namespace: econmind
+spec:
+  selector:
+    app: econmind-api
+  ports:
+    - port: 8000
+      targetPort: 8000

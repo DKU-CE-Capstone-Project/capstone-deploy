@@ -1,0 +1,23 @@
+# KEDA ScaledObject — NATS JetStream 큐 적체(consumer lag) 기준 worker 오토스케일.
+# 이 매니페스트가 발표의 핵심: "속보 burst → 큐 적체 → worker 1→N 자동확장".
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: analysis-worker-scaler
+  namespace: econmind
+spec:
+  scaleTargetRef:
+    name: analysis-worker
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  pollingInterval: 5      # 5초마다 큐 적체 확인
+  cooldownPeriod: 30      # idle 30초 후 축소
+  triggers:
+    - type: nats-jetstream
+      metadata:
+        # NATS는 default 네임스페이스에 Helm으로 설치됨. 모니터링 포트 8222.
+        natsServerMonitoringEndpoint: "nats.default.svc.cluster.local:8222"
+        account: "$G"
+        stream: "analysis"
+        consumer: "analysis-workers"
+        lagThreshold: "5"   # consumer당 미처리 5건 초과 시 확장

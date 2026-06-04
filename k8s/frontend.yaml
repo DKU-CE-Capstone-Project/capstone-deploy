@@ -1,0 +1,41 @@
+# EconMind 프론트엔드 (nginx: 정적 SPA + /api·/jobs·/analyze 백엔드 프록시)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: econmind-frontend
+  namespace: econmind
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: econmind-frontend
+  template:
+    metadata:
+      labels:
+        app: econmind-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/dku-ce-capstone-project/econmind-frontend:demo
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: econmind-frontend
+  namespace: econmind
+spec:
+  selector:
+    app: econmind-frontend
+  ports:
+    - port: 80
+      targetPort: 80
