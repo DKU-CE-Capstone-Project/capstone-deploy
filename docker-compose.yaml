@@ -1,5 +1,19 @@
 # 로컬 검증용 — k3s 이관 전 burst→worker 분산 처리를 먼저 확인한다.
 # 수동 스케일: docker compose up --scale econmind-worker=5
+#
+# ⚠ 이 서버는 RAM 8GB 다. 모든 서비스에 메모리 상한이 걸려 있다(아래 예산표).
+#   burst 데모(--scale econmind-worker=10)는 MongoDB 와 동시에 돌리면 OOM 난다.
+#   → docker-compose.burst.yaml 오버레이를 함께 쓸 것. README「burst 데모」절 참고.
+#
+#   컨테이너              배정        근거
+#   ─────────────────────────────────────────────────────────────────────
+#   OS + Docker 데몬      ~1.0 GB
+#   mongodb               3.0 GB     mongod(WT 캐시 1GB) + mongot(JVM)
+#   econmind-api          768 MB
+#   econmind-worker × 1   512 MB
+#   nats + redis + frontend ~320 MB
+#   여유                  ~2.4 GB
+#   실측치는 README「메모리 실측」표를 볼 것.
 services:
   nats:
     image: nats:2.10-alpine
@@ -7,11 +21,85 @@ services:
     ports:
       - "4222:4222"
       - "8222:8222"
+    mem_limit: 128m
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    mem_limit: 128m
+
+  # ── MongoDB (영속화 + 벡터검색) ──────────────────────────────────────────
+  # 이미지는 mongodb/mongodb-atlas-local — mongod + mongot(Lucene 검색 프로세스)이
+  # 함께 들어 있어 $vectorSearch 와 Search Index API 가 애플리케이션 코드 수정
+  # 없이 동작한다. 일반 mongo:7 로 바꾸면 app/agents/report_generator.py 의
+  # retrieve_rag_articles(RAG 그라운딩)가 통째로 죽는다.
+  mongodb:
+    image: mongodb/mongodb-atlas-local:8.0.28   # 태그 고정 (latest 금지)
+    hostname: mongodb                            # 단일 노드 replica set 이 이 이름으로 자신을 광고한다. 바꾸지 말 것
+    restart: unless-stopped
+    # command: 를 절대 넣지 말 것 — 이미지 CMD(/usr/local/bin/runner server)를
+    # 덮어쓰면 mongot 이 안 뜨고 벡터검색이 죽는다 (MongoDB 공식 문서 지침).
+    # WiredTiger 캐시 상한은 mongodb-tuner 서비스가 런타임으로 건다.
+    environment:
+      MONGODB_INITDB_ROOT_USERNAME: ${MONGODB_ROOT_USERNAME:?.env 에 MONGODB_ROOT_USERNAME 를 넣어라 (.env.example 참고)}
+      MONGODB_INITDB_ROOT_PASSWORD: ${MONGODB_ROOT_PASSWORD:?.env 에 MONGODB_ROOT_PASSWORD 를 넣어라 (.env.example 참고)}
+      MONGODB_INITDB_DATABASE: ${MONGODB_DB_NAME:-capstone_news}
+      # 초기화 스크립트가 만드는 앱 전용 계정 (readWrite@capstone_news)
+      MONGODB_APP_USERNAME: ${MONGODB_APP_USERNAME:?.env 에 MONGODB_APP_USERNAME 를 넣어라}
+      MONGODB_APP_PASSWORD: ${MONGODB_APP_PASSWORD:?.env 에 MONGODB_APP_PASSWORD 를 넣어라}
+      MONGOT_LOG_FILE: /dev/stderr      # mongot 로그를 docker logs 로
+      RUNNER_LOG_FILE: /dev/stderr
+      DO_NOT_TRACK: "1"
+    volumes:
+      # 최초 기동 시 알파벳 순으로 실행된다 (계정 → 컬렉션+validator → 인덱스 → 벡터인덱스)
+      - ./mongo-init:/docker-entrypoint-initdb.d:ro
+      - ./scripts:/scripts:ro
+      # 영속화 — 세 경로 모두 필요하다. mongot 인덱스는 /data/mongot 에 있어서
+      # 이걸 빼면 재기동마다 벡터 인덱스를 다시 빌드한다.
+      - mongodb-data:/data/db
+      - mongodb-config:/data/configdb
+      - mongodb-mongot:/data/mongot
+    # 포트를 호스트에 노출하지 않는다. 같은 compose 네트워크에서 mongodb:27017 로만 접근.
+    # 외부에서 봐야 하면 SSH 터널을 쓸 것:
+    #   ssh -N -L 27017:localhost:27017 <user>@<server>   # 서버에서: docker compose exec mongodb mongosh
+    # (포트를 열면 인증만으로 인터넷에 DB 를 노출하게 된다 — 캡스톤 서버엔 방화벽이 얇다)
+    mem_limit: 3g
+    healthcheck:
+      # 이미지 내장 헬스체크(runner healthcheck)를 그대로 쓴다.
+      # mongosh ping 보다 강하다: mongod + mongot + 초기화 스크립트 완료까지 확인한다.
+      # (interval/start_period 만 늘렸다 — 첫 기동은 replica set 구성 + init 스크립트로 느리다)
+      test: ["CMD", "/usr/local/bin/runner", "healthcheck"]
+      interval: 15s
+      timeout: 60s
+      start_period: 180s
+      retries: 5
+
+  # ── WiredTiger 캐시 상한 적용 (매 기동 1회, 실행 후 종료) ────────────────
+  # 왜 별도 서비스인지 / 왜 --wiredTigerCacheSizeGB 플래그가 아닌지는
+  # scripts/tune-memory.js 상단 주석에 전부 적어 뒀다.
+  # 정상 동작 시 `docker compose ps` 에 Exited (0) 으로 보인다 — 고장이 아니다.
+  mongodb-tuner:
+    image: mongodb/mongodb-atlas-local:8.0.28   # mongodb 와 같은 이미지 → 추가 pull 없음
+    restart: "no"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      MONGODB_ROOT_USERNAME: ${MONGODB_ROOT_USERNAME:?.env 를 만들어라 (cp .env.example .env)}
+      MONGODB_ROOT_PASSWORD: ${MONGODB_ROOT_PASSWORD:?.env 를 만들어라 (cp .env.example .env)}
+      MONGODB_INITDB_DATABASE: ${MONGODB_DB_NAME:-capstone_news}
+      MONGODB_WT_CACHE_MB: ${MONGODB_WT_CACHE_MB:-1024}
+      HOME: /tmp          # mongosh 가 설정/히스토리를 쓸 곳 (이미지는 mongod 유저로 돈다)
+    volumes:
+      - ./scripts:/scripts:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mongosh
+        "mongodb://$${MONGODB_ROOT_USERNAME}:$${MONGODB_ROOT_PASSWORD}@mongodb:27017/?authSource=admin"
+        --quiet --file /scripts/tune-memory.js
+    mem_limit: 256m
 
   econmind-api:
     build: ../backend
@@ -21,11 +109,25 @@ services:
       DEMO_MODE: "true"
       USE_MOCK_NEWS: "true"
       CORS_ORIGINS: "*"
+      # ── MongoDB (자체 호스팅) ──
+      USE_MONGODB: ${USE_MONGODB:-true}
+      MONGODB_DB_NAME: ${MONGODB_DB_NAME:-capstone_news}
+      MONGODB_URI: mongodb://${MONGODB_APP_USERNAME:?.env 를 만들어라 (cp .env.example .env)}:${MONGODB_APP_PASSWORD:?.env 를 만들어라 (cp .env.example .env)}@mongodb:27017/${MONGODB_DB_NAME:-capstone_news}?authSource=admin
+      USE_RAG: ${USE_RAG:-true}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-gemini-embedding-001}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      NEWSAPI_KEY: ${NEWSAPI_KEY:-}
     ports:
       - "8000:8000"
     depends_on:
-      - nats
-      - redis
+      nats:
+        condition: service_started
+      redis:
+        condition: service_started
+      mongodb:
+        condition: service_healthy   # 컬렉션·validator·인덱스가 준비된 뒤에 뜬다
+    mem_limit: 768m
 
   econmind-worker:
     build: ../backend
@@ -35,9 +137,13 @@ services:
       REDIS_URL: redis://redis:6379/0
       DEMO_MODE: "true"
       USE_MOCK_NEWS: "true"
+      # worker 는 burst 측정 재현성 때문에 Mongo 를 쓰지 않는다
+      # (임베딩/DB 왕복이 burst 타이밍에 섞이면 측정이 흔들린다)
+      USE_MONGODB: "false"
     depends_on:
       - nats
       - redis
+    mem_limit: 512m
 
   frontend:
     build:
@@ -48,3 +154,9 @@ services:
       - "8080:80"
     depends_on:
       - econmind-api
+    mem_limit: 128m
+
+volumes:
+  mongodb-data:
+  mongodb-config:
+  mongodb-mongot:
