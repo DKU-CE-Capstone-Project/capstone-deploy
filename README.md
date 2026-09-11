@@ -205,7 +205,17 @@ docker compose exec -T mongodb mongosh \
 
 완전 초기화가 필요하면 `docker compose down -v` (볼륨까지 삭제 → 다음 기동에 자동 재생성).
 
-### 3. 확인
+### 3. 시드 데이터 (선택)
+
+빈 DB에서 흐름을 바로 보고 싶으면 mock 기사를 넣는다. 런타임 저장 경로와 같은 변환
+함수(`app.utils.to_news_document`)를 쓰므로 실제 수집 데이터와 형태가 어긋나지 않는다.
+
+```bash
+docker compose exec econmind-api python scripts/seed_mongo.py
+docker compose exec econmind-api python scripts/seed_mongo.py --embed   # 벡터검색까지 확인 (GOOGLE_API_KEY 필요)
+```
+
+### 4. 확인
 
 ```bash
 curl -s localhost:8000/health                       # {"status":"ok","mongodb":"on"}
@@ -224,7 +234,7 @@ docker compose exec -T mongodb mongosh -u ... --quiet \
 리포트 생성 시 api 로그에 `[report] RAG grounded with N similar articles`가 찍히고,
 `GET /api/v1/reports/{id}` 응답에 `verification`·`rag_sources`가 포함되면 RAG까지 정상이다.
 
-### 4. 벡터 인덱스가 안 만들어질 때
+### 5. 벡터 인덱스가 안 만들어질 때
 
 `mongot` 기동이 늦으면 최초 인덱스 생성이 실패할 수 있다. 백엔드가 기동 시 재시도하지만,
 그래도 없으면 수동 생성한다:
@@ -240,7 +250,7 @@ docker compose exec -T mongodb mongosh -u ... --quiet --eval '
 `numDimensions`는 `app/config.py`의 `embedding_model`(기본 `gemini-embedding-001`) 출력
 차원과 반드시 일치해야 한다.
 
-### 5. 메모리 (서버 RAM 8GB 기준)
+### 6. 메모리 (서버 RAM 8GB 기준)
 
 `mongodb` 서비스에 `mem_limit: 3g`를 걸어 두었다. mongod는 컨테이너 cgroup 한도를 읽어
 WiredTiger 캐시를 `(limit − 1GB) × 50%` ≈ 1GB로 잡는다. **캡을 지우면 호스트 RAM 기준으로
