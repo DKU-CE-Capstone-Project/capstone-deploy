@@ -1,3 +1,8 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# 자격증명 — 절대 커밋 금지 (.env.example만 커밋한다)
+.env
+.env.*
+!.env.example

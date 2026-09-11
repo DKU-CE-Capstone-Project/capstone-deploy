@@ -1,5 +1,21 @@
-# 로컬 검증용 — k3s 이관 전 burst→worker 분산 처리를 먼저 확인한다.
-# 수동 스케일: docker compose up --scale econmind-worker=5
+# 로컬/자체서버 실행용 스택.
+#
+# 메모리 예산: 서버 RAM 8GB 기준으로 각 서비스에 mem_limit을 건다.
+# 캡이 없으면 MongoDB의 WiredTiger 캐시가 호스트 RAM 기준으로 잡혀 나머지를 밀어낸다.
+#
+#   OS + Docker      ~1.0 GB
+#   mongodb          ~3.0 GB  (mongod + mongot)
+#   econmind-api     ~0.8 GB
+#   econmind-worker  ~0.5 GB × N
+#   nats/redis/front ~0.3 GB
+#
+# ⚠️ burst 측정(`--scale econmind-worker=10`)은 MongoDB와 동시에 돌리지 말 것.
+#    8GB에서 OOM 난다. 절차는 README "burst 측정" 절 참고:
+#      docker compose stop mongodb
+#      docker compose up -d --scale econmind-worker=10 econmind-worker
+#
+# 자격증명은 .env에서 읽는다 (.env.example 참고). 절대 이 파일에 직접 쓰지 말 것.
+
 services:
   nats:
     image: nats:2.10-alpine
@@ -7,11 +23,55 @@ services:
     ports:
       - "4222:4222"
       - "8222:8222"
+    mem_limit: 256m
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    mem_limit: 256m
+
+  mongodb:
+    # Atlas Local 이미지: mongod + mongot(Lucene 검색)을 함께 띄운다.
+    # 일반 mongo:7에는 $vectorSearch / createSearchIndex가 없어 RAG가 죽는다.
+    # 단일 노드 replica set으로 자동 구성된다.
+    #
+    # 태그는 반드시 고정한다. 최초 pull 성공 후 실제 패치 버전으로 좁히는 것을 권장:
+    #   docker image inspect mongodb/mongodb-atlas-local:8.0 --format '{{index .RepoDigests 0}}'
+    image: mongodb/mongodb-atlas-local:8.0
+    restart: unless-stopped
+    environment:
+      # 이미지 버전에 따라 MONGODB_ / MONGO_ 접두사가 갈려서 둘 다 준다 (여분은 무시됨).
+      MONGODB_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGODB_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGODB_INITDB_DATABASE: ${MONGO_DB_NAME:-capstone_news}
+      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-capstone_news}
+      # mongo-init/00-app-user.js가 읽어 앱 전용 계정을 만든다.
+      MONGO_APP_USERNAME: ${MONGO_APP_USERNAME:-econmind_app}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD}
+    volumes:
+      - mongodb_data:/data/db
+      # 최초 기동(데이터 디렉터리가 비어 있을 때) 1회 실행된다.
+      # 이후 스키마를 바꿨다면 README의 수동 재실행 절차를 쓸 것 (스크립트는 멱등).
+      - ./mongo-init:/docker-entrypoint-initdb.d:ro
+    # 포트를 호스트에 노출하지 않는다. 같은 compose 네트워크에서 mongodb:27017로만 접근.
+    # 외부에서 봐야 하면 SSH 터널을 쓸 것:
+    #   ssh -L 27017:localhost:27017 <server>  +  아래 ports 주석 해제
+    # ports:
+    #   - "127.0.0.1:27017:27017"
+    #
+    # mem_limit이 곧 WiredTiger 캐시 상한을 결정한다. mongod는 컨테이너 cgroup 한도를
+    # 읽어 캐시를 (limit - 1GB) * 50% 로 잡으므로, 3g면 캐시는 약 1GB가 된다.
+    # 이미지 엔트리포인트가 mongod/mongot을 함께 관리하므로 command로 덮어쓰지 않는다.
+    mem_limit: 3g
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s     # mongot 기동까지 여유를 준다
 
   econmind-api:
     build: ../backend
@@ -21,11 +81,25 @@ services:
       DEMO_MODE: "true"
       USE_MOCK_NEWS: "true"
       CORS_ORIGINS: "*"
+      # ── MongoDB (자체 호스팅) ──
+      MONGODB_URI: mongodb://${MONGO_APP_USERNAME:-econmind_app}:${MONGO_APP_PASSWORD}@mongodb:27017/${MONGO_DB_NAME:-capstone_news}?authSource=${MONGO_DB_NAME:-capstone_news}
+      MONGODB_DB_NAME: ${MONGO_DB_NAME:-capstone_news}
+      USE_MONGODB: "true"
+      USE_RAG: "true"
+      EMBEDDING_MODEL: gemini-embedding-001
+      # 임베딩은 Gemini 전용이라 키가 없으면 RAG는 graceful하게 꺼진다.
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
       - "8000:8000"
+    mem_limit: 768m
     depends_on:
-      - nats
-      - redis
+      nats:
+        condition: service_started
+      redis:
+        condition: service_started
+      mongodb:
+        condition: service_healthy
 
   econmind-worker:
     build: ../backend
@@ -35,6 +109,10 @@ services:
       REDIS_URL: redis://redis:6379/0
       DEMO_MODE: "true"
       USE_MOCK_NEWS: "true"
+      # worker는 burst 측정의 재현성을 위해 DB/임베딩을 건드리지 않는다.
+      # (MongoDB 호출이 처리 시간에 섞이면 스케일 효과를 분리 측정할 수 없다)
+      USE_MONGODB: "false"
+    mem_limit: 512m       # ×10 스케일 시 총 5GB — burst 때 mongodb를 내리는 이유
     depends_on:
       - nats
       - redis
@@ -46,5 +124,11 @@ services:
         VITE_API_BASE: ""
     ports:
       - "8080:80"
+    mem_limit: 128m
     depends_on:
       - econmind-api
+
+volumes:
+  # 이름 있는 볼륨 — 컨테이너를 내렸다 올려도 데이터가 남는다.
+  # 완전 초기화(스키마 재적용 포함): docker compose down -v
+  mongodb_data:

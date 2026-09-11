@@ -11,18 +11,35 @@ POST /jobs ──> econmind-api ──publish──> NATS JetStream(analysis.job
 GET /jobs/{id} <── econmind-api <──read── Redis
 ```
 
-## 0. 로컬 검증 (k3s 이관 전 — 안전 백업)
+## 0. 로컬/자체서버 실행 (docker compose)
 
 ```bash
 cd deploy
-docker compose up --build              # nats + redis + api + worker(1) + frontend
-# 다른 터미널 — burst (동기 1-worker)
-python loadtest/burst.py --base http://localhost:8000 --n 100
-# 워커 수동 스케일해서 효과 비교
-docker compose up --scale econmind-worker=5
-python loadtest/burst.py --base http://localhost:8000 --n 100
+cp .env.example .env        # MongoDB 계정·비밀번호를 채운다 (openssl rand -base64 24)
+docker compose up --build   # nats + redis + mongodb + api + worker(1) + frontend
 ```
 UI: http://localhost:8080  ·  API: http://localhost:8000/health
+
+`GET /health`가 `{"status":"ok","mongodb":"on"}`이면 DB까지 정상이다.
+
+### burst 측정
+
+⚠️ **워커를 스케일하기 전에 `mongodb`를 내린다.** 서버 RAM 8GB 기준으로 worker 10개(≈5GB)와
+MongoDB(3GB)를 동시에 띄우면 OOM 난다. worker는 `USE_MONGODB=false`라 DB가 없어도 동작한다.
+
+```bash
+docker compose stop mongodb
+# (A) 기준선 — worker 1개
+docker compose up -d --scale econmind-worker=1 econmind-worker
+python loadtest/burst.py --base http://localhost:8000 --n 100
+# (B) 스케일 — worker 10개
+docker compose up -d --scale econmind-worker=10 econmind-worker
+python loadtest/burst.py --base http://localhost:8000 --n 100
+# 측정이 끝나면 되돌린다
+docker compose up -d --scale econmind-worker=1 mongodb econmind-worker
+```
+
+측정 중 `docker stats`로 실사용량을 확인하고 `MEASUREMENTS.md`에 기록할 것.
 
 ## 1-A. 로컬 kind 배포 (✅ 검증 완료 — KEDA 자동확장 + Grafana 확인)
 
@@ -138,20 +155,103 @@ python loadtest/burst.py --base http://<INGRESS_IP> --n 100   # T2, p95 기록 �
 Grafana(이중축): NATS consumer lag vs `kube_deployment_status_replicas{deployment="analysis-worker"}`
 → "큐가 차니 KEDA가 늘렸다"를 한 화면에 시각화.
 
-## MongoDB Atlas (영속화 + 벡터검색 / RAG)
+## MongoDB (자체 호스팅 — 영속화 + 벡터검색 / RAG)
 
-1. **Atlas Network Access**: 클러스터를 호출하는 머신/노드의 공인 IP를 IP Access List에 추가(데모는 `0.0.0.0/0`). 미등록 시 `TLSV1_ALERT_INTERNAL_ERROR`로 연결 거부됨.
-2. **시크릿 주입**: `kubectl -n econmind create secret generic api-keys ... --from-literal=MONGODB_URI='mongodb+srv://<user>:<pw>@cluster0.h8e6cfn.mongodb.net/capstone_news?retryWrites=true&w=majority&appName=Cluster0'` (기존 GOOGLE_API_KEY/NEWSAPI_KEY와 함께). 비밀번호는 절대 매니페스트/깃에 넣지 말 것.
-3. **활성화**: `econmind-api`에 `USE_MONGODB=true`(매니페스트 반영됨). `GET /health` → `{"mongodb":"on"}` 확인.
-4. **벡터 인덱스**: 앱 startup이 `articles.embedding`(768d, cosine) `vectorSearch` 인덱스를 자동 생성 시도. 실패 시 **Atlas UI 수동 생성**:
-   - Atlas → Cluster0 → Atlas Search → Create Search Index → JSON Editor → Vector Search
-   - DB `capstone_news`, Collection `articles`, 이름 `vector_index`:
-   ```json
-   { "fields": [ { "type": "vector", "path": "embedding", "numDimensions": 768, "similarity": "cosine" } ] }
-   ```
-5. **확인**: `nvidia` 검색 → Atlas Browse Collections `capstone_news.articles`에 문서 + `embedding`(768) 존재. 리포트 생성 시 api 로그에 `[report] RAG grounded with N similar articles`, `GET /reports/{id}` 응답에 `verification`·`rag_sources`.
+> 기존 MongoDB Atlas 무료 클러스터는 미사용 기간이 길어 **삭제**되었다. 이제 `docker compose`의
+> `mongodb` 서비스로 직접 운영한다. Atlas 연결 문자열·IP Access List 절차는 더 이상 쓰지 않는다.
 
-> worker는 burst 재현성 위해 `USE_MONGODB=false` 유지(임베딩/DB 호출이 burst 타이밍에 영향 X).
+### 왜 `mongodb/mongodb-atlas-local` 이미지인가
+
+백엔드(`app/database.py`)가 `$vectorSearch`와 `createSearchIndex`를 쓰는데, **이 둘은 일반
+MongoDB Community 서버에 없다.** `mongo:7`을 띄우면 RAG 그라운딩이 통째로 죽는다.
+Atlas Local 이미지는 `mongod` + `mongot`(Lucene 검색 프로세스)을 함께 띄워 두 기능을
+그대로 제공하므로, 애플리케이션 코드를 고치지 않아도 된다.
+
+### 1. 계정 준비
+
+```bash
+cp .env.example .env
+# MONGO_ROOT_PASSWORD / MONGO_APP_PASSWORD 를 새로 생성해 채운다
+openssl rand -base64 24
+```
+
+백엔드는 root가 아니라 **`capstone_news`에만 readWrite 권한을 가진 앱 계정**으로 붙는다
+(`mongo-init/00-app-user.js`가 최초 기동 시 생성).
+
+### 2. 스키마 적용
+
+컨테이너 최초 기동 시 `mongo-init/*.js`가 자동 실행되어 **8개 컬렉션 + 인덱스 + JSON Schema
+Validator**를 만든다. 기준은 Notion `설계 › 데이터베이스 › 구조크`다.
+
+```
+capstone_news
+├─ news              ├─ mindmaps (미사용: 쿠키/세션으로 처리)
+├─ news_analysis     ├─ reports
+├─ news_relations    ├─ strategies
+                     ├─ jobs  (미사용: Redis로 구현)
+                     └─ users (미사용: 로그인 미구현)
+```
+
+MongoDB는 스키마리스라 설계 문서만으로는 구조가 강제되지 않는다. 그래서 validator를 걸어
+**설계에서 벗어난 문서는 DB가 거부**하게 했다. 이게 설계-구현 정합화의 핵심 장치다.
+
+스키마를 수정한 뒤 재적용 (스크립트는 멱등이라 언제든 재실행 가능):
+
+```bash
+docker compose exec -T mongodb mongosh \
+  -u "$MONGO_ROOT_USERNAME" -p "$MONGO_ROOT_PASSWORD" --authenticationDatabase admin \
+  --file /docker-entrypoint-initdb.d/01-collections.js
+```
+
+완전 초기화가 필요하면 `docker compose down -v` (볼륨까지 삭제 → 다음 기동에 자동 재생성).
+
+### 3. 확인
+
+```bash
+curl -s localhost:8000/health                       # {"status":"ok","mongodb":"on"}
+docker compose exec -T mongodb mongosh -u ... --quiet \
+  --eval 'db.getSiblingDB("capstone_news").getCollectionNames()'
+```
+
+검색 후 데이터가 쌓이는지:
+
+```bash
+curl -s "localhost:8000/api/v1/news/search?q=엔비디아&size=5" > /dev/null
+docker compose exec -T mongodb mongosh -u ... --quiet \
+  --eval 'db.getSiblingDB("capstone_news").news.countDocuments()'
+```
+
+리포트 생성 시 api 로그에 `[report] RAG grounded with N similar articles`가 찍히고,
+`GET /api/v1/reports/{id}` 응답에 `verification`·`rag_sources`가 포함되면 RAG까지 정상이다.
+
+### 4. 벡터 인덱스가 안 만들어질 때
+
+`mongot` 기동이 늦으면 최초 인덱스 생성이 실패할 수 있다. 백엔드가 기동 시 재시도하지만,
+그래도 없으면 수동 생성한다:
+
+```bash
+docker compose exec -T mongodb mongosh -u ... --quiet --eval '
+  db.getSiblingDB("capstone_news").news.createSearchIndex(
+    "vector_index", "vectorSearch",
+    { fields: [{ type: "vector", path: "embedding", numDimensions: 768, similarity: "cosine" }] }
+  )'
+```
+
+`numDimensions`는 `app/config.py`의 `embedding_model`(기본 `gemini-embedding-001`) 출력
+차원과 반드시 일치해야 한다.
+
+### 5. 메모리 (서버 RAM 8GB 기준)
+
+`mongodb` 서비스에 `mem_limit: 3g`를 걸어 두었다. mongod는 컨테이너 cgroup 한도를 읽어
+WiredTiger 캐시를 `(limit − 1GB) × 50%` ≈ 1GB로 잡는다. **캡을 지우면 호스트 RAM 기준으로
+3.5GB를 잡아가 나머지 서비스를 밀어낸다.**
+
+`docker stats`로 실사용량을 확인하고, 여유가 1GB 미만으로 떨어지면 `mem_limit`을 조정할 것.
+
+> worker는 burst 재현성 위해 `USE_MONGODB=false`를 유지한다(임베딩/DB 호출이 burst 타이밍에 섞이지 않도록).
+
+> **k8s 매니페스트(`k8s/`)는 아직 Atlas 기준이며 이번 전환에 포함되지 않았다.** `k8s/backend-api.yaml`의
+> `MONGODB_URI`는 삭제된 Atlas 클러스터를 가리키므로, k8s로 배포하려면 먼저 갱신해야 한다.
 
 ## 백업 트리거 (KEDA nats-jetstream 설정 난항 시)
 `k8s/keda-scaledobject.yaml`의 trigger를 CPU 기반으로 교체:
