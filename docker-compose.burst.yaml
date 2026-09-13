@@ -1,0 +1,32 @@
+# burst 부하 데모 전용 오버레이 — MEASUREMENTS.md 재현용
+#
+#   docker compose -f docker-compose.yaml -f docker-compose.burst.yaml up -d \
+#     --scale econmind-worker=10
+#
+# 왜 필요한가: 기본 프로파일의 worker 상한은 512MB 다. 10개로 스케일하면
+# 5GB 를 요구해 MongoDB(3GB)와 합쳐 8GB 서버에서 확실히 OOM 난다.
+# 여기서는 worker 1개당 200MB 로 조여 10개 총합을 2GB 로 묶고, MongoDB 도
+# 1GB(WT 캐시 256MB)로 낮춘다. demo_mode 워커는 대부분 asyncio.sleep 대기라
+# 실사용량이 낮아서 200MB 로 충분하다.
+#
+#   OS+Docker 1.0 + mongodb 1.0 + api 0.5 + worker 2.0 + nats/redis/frontend 0.4
+#   = 약 4.9GB / 7.7GB  →  여유 ~2.8GB
+#
+# 측정 수치를 가장 깨끗하게 뽑고 싶으면 MongoDB 를 아예 빼도 된다:
+#   docker compose -f docker-compose.yaml -f docker-compose.burst.yaml up -d \
+#     --scale econmind-worker=10 --scale mongodb=0 --scale mongodb-tuner=0 --no-deps \
+#     nats redis econmind-api econmind-worker
+services:
+  mongodb:
+    mem_limit: 1g
+
+  mongodb-tuner:
+    environment:
+      MONGODB_WT_CACHE_MB: "256"
+
+  econmind-api:
+    mem_limit: 512m
+
+  econmind-worker:
+    # 10개 × 200m = 2GB 상한
+    mem_limit: 200m
