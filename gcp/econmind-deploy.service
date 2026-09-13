@@ -1,0 +1,12 @@
+[Unit]
+Description=Tested multi-repository deployment for EconMind
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=econmind
+WorkingDirectory=/home/econmind/econmind-cd
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/econmind/econmind-cd/controller/deploy.py
+TimeoutStartSec=45min
