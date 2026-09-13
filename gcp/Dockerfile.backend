@@ -1,0 +1,23 @@
+# Build context contains immutable backend/ and news-logic/ source snapshots.
+FROM python:3.11-slim AS runtime
+ENV PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential libxml2-dev libxslt1-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY backend/pyproject.toml ./
+RUN python -c 'import tomllib; d=tomllib.load(open("pyproject.toml", "rb")); print("\n".join(x for x in d["project"]["dependencies"] if not x.startswith("capstone-news-logic")))' > /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+COPY news-logic /opt/news-logic
+RUN pip install --no-cache-dir --no-deps /opt/news-logic
+COPY backend/app ./app
+COPY backend/fixtures ./fixtures
+RUN pip install --no-cache-dir --no-deps .
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+FROM runtime AS test
+COPY backend/tests ./tests
+RUN pip install --no-cache-dir pytest pytest-asyncio
+RUN DEMO_MODE=true USE_MOCK_NEWS=true USE_MONGODB=false USE_LLM_SUMMARIES=false \
+    python -m pytest -q tests /opt/news-logic/tests
