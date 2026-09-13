@@ -260,6 +260,37 @@ WiredTiger 캐시를 `(limit − 1GB) × 50%` ≈ 1GB로 잡는다. **캡을 지
 
 > worker는 burst 재현성 위해 `USE_MONGODB=false`를 유지한다(임베딩/DB 호출이 burst 타이밍에 섞이지 않도록).
 
+## 세션 (쿠키 기반 사용자 식별)
+
+로그인을 넣지 않기로 해서(12주차 회의) 계정으로 사용자를 구분할 수 없다. 대신 백엔드가
+`econmind_sid` 쿠키를 발급하고, 세션 상태를 **Redis에 TTL과 함께** 저장한다.
+TTL 만료 = 세션 소멸 = 마인드맵 데이터 삭제라, 설계의 "mindmaps는 DB에 저장하지 않는다"와
+"세션이 지워지면 데이터를 지운다"가 동시에 지켜진다.
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `SESSION_TTL_SECONDS` | `86400` | 세션 수명(초). 접근할 때마다 갱신된다 |
+| `SESSION_COOKIE_SECURE` | `false` | **HTTPS로 서비스하면 반드시 `true`**. http에서 `true`면 쿠키가 안 실린다 |
+| `SESSION_COOKIE_SAMESITE` | `lax` | 프론트와 API가 다른 도메인이면 `none` + `SECURE=true` 필요 |
+
+확인:
+
+```bash
+# 쿠키가 발급되는지
+curl -s -D - -o /dev/null localhost:8000/api/v1/session | grep -i set-cookie
+# → set-cookie: econmind_sid=...; HttpOnly; Max-Age=86400; Path=/; SameSite=lax
+
+# 서로 다른 쿠키 = 서로 다른 마인드맵
+curl -s -c a.txt -b a.txt localhost:8000/api/v1/session
+curl -s -c b.txt -b b.txt localhost:8000/api/v1/session   # 다른 session_id
+```
+
+> Redis가 죽어 있으면 프로세스 로컬 dict로 폴백한다. 동작은 하지만 api를 여러 개로 띄우면
+> 세션이 팟마다 갈리므로, 운영에서는 Redis를 반드시 붙인다.
+>
+> 프론트엔드는 `fetch(..., { credentials: 'include' })`로 호출해야 쿠키가 오간다
+> (`capstone-frontend/src/data/apiAdapter.ts`).
+
 > **k8s 매니페스트(`k8s/`)는 아직 Atlas 기준이며 이번 전환에 포함되지 않았다.** `k8s/backend-api.yaml`의
 > `MONGODB_URI`는 삭제된 Atlas 클러스터를 가리키므로, k8s로 배포하려면 먼저 갱신해야 한다.
 

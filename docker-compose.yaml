@@ -87,6 +87,15 @@ services:
       USE_MONGODB: "true"
       USE_RAG: "true"
       EMBEDDING_MODEL: gemini-embedding-001
+      # ── 세션 (쿠키 기반 사용자 식별) ──
+      # 로그인이 없어 계정으로 사용자를 못 나누므로 쿠키로 구분한다.
+      # 상태는 위 REDIS_URL의 Redis에 TTL과 함께 저장된다 (만료 = 세션 소멸).
+      SESSION_TTL_SECONDS: "86400"
+      # HTTPS로 서비스하면 true로 바꾼다. http에서 true면 쿠키가 아예 안 실린다.
+      SESSION_COOKIE_SECURE: "false"
+      # 프론트가 nginx를 통해 같은 출처로 붙으므로 lax로 충분하다.
+      # 프론트와 API를 다른 도메인에 두면 "none" + SECURE=true 가 필요하다.
+      SESSION_COOKIE_SAMESITE: "lax"
       # 임베딩은 Gemini 전용이라 키가 없으면 RAG는 graceful하게 꺼진다.
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
