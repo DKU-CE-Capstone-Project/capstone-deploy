@@ -6,3 +6,6 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# 머신별 로컬 오버라이드
+docker-compose.override.yaml
