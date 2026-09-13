@@ -1,8 +1,5 @@
 # EconMind — CNCF 배포 런북
 
-현재 GCP 서버(`35.216.13.110`)의 세 저장소 자동 통합 배포는
-[gcp/README.md](gcp/README.md)를 참고하세요. 아래 내용은 별도 k3s/KEDA 데모 런북입니다.
-
 발표 자료의 **"속보 burst → NATS 큐 버퍼 → KEDA worker 1→N 오토스케일"** 을 단일 클라우드 VM + k3s에 배포한다.
 
 ```
