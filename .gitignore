@@ -1,3 +1,8 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# Server environment variables and credentials
+.env
+.env.*
+!.env.example
