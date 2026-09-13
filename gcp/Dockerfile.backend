@@ -12,7 +12,7 @@ COPY news-logic /opt/news-logic
 RUN pip install --no-cache-dir --no-deps /opt/news-logic
 COPY backend/app ./app
 COPY backend/fixtures ./fixtures
-RUN pip install --no-cache-dir --no-deps .
+RUN pip install --no-cache-dir --no-deps . && pip check
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 

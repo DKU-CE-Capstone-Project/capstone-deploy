@@ -139,12 +139,19 @@ def baseline():
 
 def smoke():
     base = "http://127.0.0.1:8080"
-    health = json_url(base + "/health")
-    if health.get("status") != "ok":
-        raise RuntimeError("API health check failed")
-    with urllib.request.urlopen(base + "/", timeout=15) as response:
-        if b'<div id="root"' not in response.read():
-            raise RuntimeError("Frontend HTML is missing")
+    for attempt in range(15):
+        try:
+            health = json_url(base + "/health")
+            if health.get("status") != "ok":
+                raise RuntimeError("API health check failed")
+            with urllib.request.urlopen(base + "/", timeout=15) as response:
+                if b'<div id="root"' not in response.read():
+                    raise RuntimeError("Frontend HTML is missing")
+            break
+        except Exception:
+            if attempt == 14:
+                raise
+            time.sleep(2)
     # Mock mode: also verify the API -> NATS -> worker -> Redis path without paid calls.
     mock = run(*DOCKER, "exec", "econmind-econmind-api-1", "python", "-c",
                "from app.config import settings; print(settings.mock_news_active)", capture=True).strip()
