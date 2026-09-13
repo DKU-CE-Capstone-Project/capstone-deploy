@@ -2,9 +2,10 @@ __pycache__/
 *.pyc
 .DS_Store
 
-# secrets
+# Server environment variables and credentials
 .env
-.env.local
+.env.*
+!.env.example
 
 # 머신별 로컬 오버라이드
 docker-compose.override.yaml

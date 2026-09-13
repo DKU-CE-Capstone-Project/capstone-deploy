@@ -1,0 +1,137 @@
+# Server deployment: docker compose -f compose.server.yaml up -d --build
+# Keep this project name to reuse the existing HTTPS, Redis and NATS volumes.
+name: econmind
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-backend-env: &backend-env
+  NATS_URL: nats://nats:4222
+  REDIS_URL: redis://redis:6379/0
+  # Mock is the default. Credentials in an old .env are not forwarded.
+  MONGODB_URI: ""
+  GOOGLE_API_KEY: ""
+  GEMINI_MODEL: gemini-flash-latest
+  LLM_PROVIDER: gemini
+  ANTHROPIC_API_KEY: ""
+  DEMO_MODE: "true"
+  USE_MOCK_NEWS: "true"
+  USE_MONGODB: "false"
+  USE_GDELT: "false"
+  NEWSAPI_KEY: ""
+  USE_LLM_SUMMARIES: "false"
+  USE_RAG: "false"
+  USE_CRITIC: "false"
+  CORS_ORIGINS: ${APP_ORIGIN:-https://econmind.duckdns.org}
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_started
+    mem_limit: 128m
+    logging: *logging
+
+  frontend:
+    image: econmind-frontend:local
+    build:
+      context: ../frontend
+      args:
+        VITE_API_BASE: ""
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./nginx.server.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      econmind-api:
+        condition: service_healthy
+    mem_limit: 128m
+    logging: *logging
+
+  econmind-api:
+    image: econmind-backend:local
+    build: ../backend
+    restart: unless-stopped
+    environment: *backend-env
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --workers
+      - "1"
+      - --proxy-headers
+      - --forwarded-allow-ips=*
+    depends_on:
+      nats:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=5)); assert d.get('status')=='ok' and d.get('mongodb')=='off'"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    mem_limit: 1024m
+    logging: *logging
+
+  econmind-worker:
+    image: econmind-backend:local
+    pull_policy: never
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    environment: *backend-env
+    depends_on:
+      econmind-api:
+        condition: service_healthy
+    mem_limit: 768m
+    logging: *logging
+
+  nats:
+    image: nats:2.10-alpine
+    restart: unless-stopped
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    volumes:
+      - nats_data:/data
+    mem_limit: 256m
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "192mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 384m
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:
+  nats_data:
+  redis_data:

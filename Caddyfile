@@ -1,0 +1,10 @@
+# Public HTTPS; certificates are renewed automatically in the caddy_data volume.
+econmind.duckdns.org {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}
+
+# Existing IP bookmarks redirect to the canonical HTTPS URL.
+http://35.216.13.110 {
+	redir https://econmind.duckdns.org{uri} permanent
+}
