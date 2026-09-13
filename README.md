@@ -1,5 +1,55 @@
 # EconMind — CNCF 배포 런북
 
+## 현재 GCP 서버 배포 (Docker Compose)
+
+서버: `35.216.13.110` · 서비스: https://econmind.duckdns.org
+
+세 Git 저장소를 다음 위치에 배치합니다. 프론트·백엔드 코드는 원본 저장소를 그대로 사용합니다.
+
+```text
+/home/econmind/capstone/
+├── backend/   # capstone-backend
+├── frontend/  # capstone-frontend
+└── deploy/    # capstone-deploy (현재 저장소)
+```
+
+서버에서는 `compose.server.yaml`을 사용합니다. 기존 `docker-compose.yaml`은 로컬 데모용입니다.
+`Caddyfile`은 HTTPS 진입점, `nginx.server.conf`는 프론트에서 API로 전달하는 프록시 설정입니다.
+프로젝트 이름 `econmind`를 유지해 기존 `econmind_caddy_data`, `econmind_caddy_config`,
+`econmind_redis_data`, `econmind_nats_data` Docker 볼륨을 이어 사용합니다.
+외부 공개 포트는 80/443이며, 점검용 프론트 포트 8080은 서버의 127.0.0.1에만 연결됩니다.
+
+GitHub 변경을 반영할 때 서버에서 실행합니다.
+
+```bash
+cd /home/econmind/capstone
+git -C backend pull --ff-only
+git -C frontend pull --ff-only
+git -C deploy pull --ff-only
+cd deploy
+sudo docker compose -f compose.server.yaml config -q
+sudo docker compose -f compose.server.yaml build econmind-api
+sudo docker compose -f compose.server.yaml build frontend
+sudo docker compose -f compose.server.yaml up -d --no-build --wait --wait-timeout 180
+# API 컨테이너 주소가 바뀐 경우 Nginx가 새 주소를 조회하도록 다시 생성합니다.
+sudo docker compose -f compose.server.yaml up -d --no-deps --force-recreate frontend
+sudo docker compose -f compose.server.yaml ps
+curl -fsS https://econmind.duckdns.org/health
+```
+
+워커는 API와 같은 백엔드 이미지를 사용합니다. 빌드는 서버 자원을 고려해 순서대로 실행합니다.
+현재 구성은 기존 서버와 같은 데모 모드입니다. LLM/API 키와 MongoDB 사용은 활성화하지 않습니다.
+서버의 `.env`는 Git에서 제외되며, `APP_ORIGIN`은 기본값으로 위 HTTPS 주소를 사용합니다.
+자동배포는 설치하지 않습니다. GitHub push 후 위의 pull·빌드·실행 명령으로 배포합니다.
+
+서비스를 내릴 때는 `sudo docker compose -f compose.server.yaml down`을 사용합니다.
+데이터·인증서를 유지하려면 `down -v`로 볼륨을 삭제하지 마세요.
+API 메모리의 뉴스·보고서 캐시는 재시작 시 초기화되며, Redis·NATS·인증서 볼륨은 유지됩니다.
+
+---
+
+아래는 기존 k3s/KEDA 데모 절차입니다.
+
 발표 자료의 **"속보 burst → NATS 큐 버퍼 → KEDA worker 1→N 오토스케일"** 을 단일 클라우드 VM + k3s에 배포한다.
 
 ```
