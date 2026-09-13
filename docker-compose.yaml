@@ -73,6 +73,38 @@ services:
       retries: 12
       start_period: 60s     # mongot 기동까지 여유를 준다
 
+  # 웹 기반 DB 뷰어. 컬렉션/문서를 브라우저에서 확인·편집한다.
+  # MongoDB Atlas 웹 UI는 Atlas가 호스팅하는 클러스터만 관리하므로 자체 서버에는 못 붙는다.
+  #
+  # ⚠️ 보안: DB 전체를 편집할 수 있는 화면이다. 공개 포트로 열면 DB를 통째로 내주는 것과 같다.
+  #    127.0.0.1에만 바인딩하고 SSH 터널로만 접속한다:
+  #      ssh -L 8081:localhost:8081 <서버>   →  브라우저에서 http://localhost:8081
+  #
+  # 운영 중 상시 필요하지 않으므로 profile로 분리했다. 볼 때만 띄운다:
+  #      docker compose --profile tools up -d mongo-express
+  mongo-express:
+    image: mongo-express:1.0.2
+    profiles: ["tools"]
+    restart: unless-stopped
+    environment:
+      # root가 아니라 앱 계정(capstone_news에만 readWrite)으로 붙는다.
+      # 뷰어가 다른 DB나 사용자 정보를 건드릴 수 없게 권한을 좁힌 것.
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_APP_USERNAME:-econmind_app}:${MONGO_APP_PASSWORD}@mongodb:27017/${MONGO_DB_NAME:-capstone_news}?authSource=${MONGO_DB_NAME:-capstone_news}
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: "false"
+      ME_CONFIG_MONGODB_AUTH_DATABASE: ${MONGO_DB_NAME:-capstone_news}
+      # 화면 자체에 걸리는 로그인 (DB 비밀번호와 다른 값을 쓸 것)
+      ME_CONFIG_BASICAUTH: "true"
+      ME_CONFIG_BASICAUTH_USERNAME: ${MONGOEXPRESS_USERNAME:-admin}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGOEXPRESS_PASSWORD}
+      ME_CONFIG_SITE_COOKIESECRET: ${MONGOEXPRESS_COOKIE_SECRET}
+      ME_CONFIG_SITE_SESSIONSECRET: ${MONGOEXPRESS_SESSION_SECRET}
+    ports:
+      - "127.0.0.1:8081:8081"   # 호스트 로컬에만 노출 — 0.0.0.0으로 바꾸지 말 것
+    mem_limit: 256m
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
   econmind-api:
     build: ../backend
     environment:

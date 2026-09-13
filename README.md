@@ -234,7 +234,51 @@ docker compose exec -T mongodb mongosh -u ... --quiet \
 리포트 생성 시 api 로그에 `[report] RAG grounded with N similar articles`가 찍히고,
 `GET /api/v1/reports/{id}` 응답에 `verification`·`rag_sources`가 포함되면 RAG까지 정상이다.
 
-### 5. 벡터 인덱스가 안 만들어질 때
+### 5. 웹으로 들여다보기 (mongo-express)
+
+브라우저에서 컬렉션·문서를 확인·편집할 수 있는 뷰어다. 상시 필요하지 않으므로
+`tools` 프로파일로 분리해 뒀고, 볼 때만 띄운다.
+
+> **MongoDB Atlas 웹 UI로는 여기에 붙을 수 없다.** Atlas는 자사가 호스팅하는 클러스터만
+> 관리하는 서비스라, 자체 서버의 mongod를 Atlas 화면에 등록하는 기능 자체가 없다.
+
+```bash
+# .env에 MONGOEXPRESS_* 를 먼저 채운다
+openssl rand -hex 32        # COOKIE / SESSION SECRET 용
+
+docker compose --profile tools up -d mongo-express
+```
+
+접속은 **SSH 터널로만** 한다:
+
+```bash
+ssh -L 8081:localhost:8081 <서버>
+# 브라우저에서 http://localhost:8081  → .env의 MONGOEXPRESS_USERNAME/PASSWORD 로 로그인
+```
+
+다 보고 나면 내린다:
+
+```bash
+docker compose stop mongo-express
+```
+
+**⚠️ 절대 `0.0.0.0:8081`로 바꾸지 말 것.** DB 전체를 편집할 수 있는 화면이라, 공개하면
+DB를 통째로 내주는 것과 같다. compose는 `127.0.0.1:8081`에 묶여 있다.
+
+연결 계정은 root가 아니라 **앱 계정**(`capstone_news`에만 readWrite)이다. 뷰어가 다른 DB나
+사용자 정보를 건드릴 수 없게 권한을 좁힌 것이다. 화면에 DB가 하나도 안 보이면 권한 범위
+문제이므로, 그때만 `ME_CONFIG_MONGODB_URL`을 root 계정 + `authSource=admin` +
+`ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"` 로 잠시 바꿔서 확인한다.
+
+데스크톱 GUI를 선호하면 **MongoDB Compass**도 된다. 이 경우 compose에서 `mongodb`의
+`ports` 주석을 풀어 `127.0.0.1:27017`로 노출한 뒤 터널을 뚫는다:
+
+```bash
+ssh -L 27017:localhost:27017 <서버>
+# Compass 연결 문자열: mongodb://<앱계정>:<pw>@localhost:27017/capstone_news
+```
+
+### 6. 벡터 인덱스가 안 만들어질 때
 
 `mongot` 기동이 늦으면 최초 인덱스 생성이 실패할 수 있다. 백엔드가 기동 시 재시도하지만,
 그래도 없으면 수동 생성한다:
@@ -250,7 +294,7 @@ docker compose exec -T mongodb mongosh -u ... --quiet --eval '
 `numDimensions`는 `app/config.py`의 `embedding_model`(기본 `gemini-embedding-001`) 출력
 차원과 반드시 일치해야 한다.
 
-### 6. 메모리 (서버 RAM 8GB 기준)
+### 7. 메모리 (서버 RAM 8GB 기준)
 
 `mongodb` 서비스에 `mem_limit: 3g`를 걸어 두었다. mongod는 컨테이너 cgroup 한도를 읽어
 WiredTiger 캐시를 `(limit − 1GB) × 50%` ≈ 1GB로 잡는다. **캡을 지우면 호스트 RAM 기준으로
