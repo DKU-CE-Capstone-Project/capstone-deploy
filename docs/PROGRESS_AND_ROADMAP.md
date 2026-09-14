@@ -4,13 +4,14 @@ project: EconMind (실시간 뉴스 기반 멀티 에이전트 투자 판단 지
 course: 단국대학교 실무중심산학협력프로젝트1 (캡스톤디자인-CE) 2분반
 team: [김성민, 김건, 문주안]
 created: 2026-09-13
-updated: 2026-09-13
+updated: 2026-09-14
 status: 발표 준비용 초안
 purpose: 최종 발표자료(지금까지 한 것 / 앞으로 할 것)의 원본 문서
 sources:
   - 캡스톤디자인 최종 제출 자료 (최종보고서 28p + 주간진행보고 11건)
   - GitHub 4개 저장소 전 브랜치 실코드 분석 (2026-09-13)
   - Notion 「EconMind 캡스톤 위키」
+  - main 체크아웃 실제 구동 캡처 (2026-09-14)
 tags: [capstone, econmind, roadmap, presentation]
 ---
 
@@ -341,6 +342,34 @@ OOMKilled 없음, 2시간 10분 무재시작. WiredTiger 캐시는 cgroup 상한
 | **21:45** | **`fix/align-news-schema` → backend main** ✅ |
 | **22:16** | **`feat/mongodb-self-hosted` → deploy main** ✅ |
 
+### 2.9 현재 화면 — 실제 구동 캡처 (2026-09-14)
+
+아래는 **`main` 체크아웃 그대로 띄워서 직접 캡처**한 화면이다. 발표자료의 화면 이미지는 6월 시점이므로,
+현재 코드가 실제로 무엇을 보여주는지는 이쪽이 정확하다.
+
+> 구동 조건: `USE_MOCK_NEWS=true` · `USE_LLM_SUMMARIES=false` · `USE_RAG=false` · `USE_CRITIC=false` · `USE_MONGODB=false`
+> (외부 API 키 없이 구동). 뉴스 데이터는 한국어 mock 픽스처, 썸네일은 외부 이미지 대신 로컬 플레이스홀더.
+
+| 화면 | 캡처 |
+|---|---|
+| **1. 홈 · 검색** — 검색창 + 추천 키워드 8종 (백엔드 API 응답) | ![홈](./screenshots/01_home.png) |
+| **2. 검색 결과** — 키워드 클러스터 (중심 키워드 + 연관 키워드 궤도 배치) | ![검색결과](./screenshots/02_search_results.png) |
+| **3. 뉴스맵** — 중심 뉴스 + 연관 뉴스 노드·엣지, 우측 유료 프리뷰 | ![뉴스맵](./screenshots/03_newsmap.png) |
+| **4. 뉴스 상세** — 좌측 미니맵 + 우측 기사 상세·원문 링크·리포트 진입 | ![상세](./screenshots/04_news_detail.png) |
+| **5. AI 리포트** — 사건 요약·시장 영향·종목 카드(KRX 티커)·분할 관심 | ![리포트](./screenshots/05_ai_report.png) |
+| **6. 모바일 홈** (390×844) | ![모바일홈](./screenshots/06_mobile_home.png) |
+| **7. 모바일 키워드 맵** | ![모바일맵](./screenshots/07_mobile_search.png) |
+
+**캡처에서 확인된 것**
+
+- `home → searchResults → newsMap → newsDetail → report` 5화면 흐름이 **키 없이도 끝까지 동작한다.**
+  발표에서 "폴백 설계로 외부 의존 없이 시연 가능"을 말할 때 이 캡처가 근거다.
+- AI 리포트 화면은 LLM 키가 없으면 **프론트 mock 리포트로 폴백**한다. 종목 카드(삼성전자·SK하이닉스·LS ELECTRIC)와
+  KRX 티커가 보이는 건 폴백 데이터이며, **실시간 시세 연동은 아니다** (6.6 미구현 항목).
+- 뉴스맵 엣지는 그려지지만 **연관도 수치는 표시되지 않는다** — 「연동 중」으로 기록된 그대로다.
+- 유료 프리뷰 패널(뉴스 선택/제외 · 연관도 상세 · 심화 리포트)은 **버튼이 disabled 상태**다. 권한 게이팅 미구현과 일치한다.
+
+
 ---
 
 ## 3. 현재 상태 정밀 진단
@@ -626,6 +655,35 @@ W9 명세표를 그대로 쓰면 틀린다. `/health`와 `/jobs`는 **`/api/v1` 
 
 「마일스톤·로드맵」과 「구현 현황·TODO」가 9/13 21:45·22:16 병합을 반영하지 못했다.
 M1을 "미병합", M2를 "미착수"로 적고 있어 **현재보다 비관적으로 보인다.** 발표 전 갱신 권장.
+
+### 🔴 6.4 W11 "EconMind 브랜딩 적용"이 코드에 없다
+
+**11주차 발표는 브랜딩 적용을 「완료」로 보고했고 변경 파일까지 명시했다.**
+하지만 `capstone-frontend`의 **어느 브랜치에도 `src/`에 "EconMind" 문자열이 없다.**
+
+| W11 발표 주장 | 실제 `main` |
+|---|---|
+| 그라디언트 워드마크 (#1d4ed8 → #a855f7, 64px, weight 900) | `PROJECT_TITLE = '실시간 뉴스 기반 멀티 에이전트 투자 판단 지원 시스템'` — 평문 |
+| 서브타이틀 "실시간 뉴스 기반 AI 투자 판단 지원" | 없음 |
+| 헤더에 차트 바 아이콘 + 미니 워드마크 상시 노출 | `HeaderBar`는 `view-chip` 하나뿐 |
+| placeholder "뉴스 키워드 검색 (예: 엔비디아, 금리, 반도체)" | `"뉴스 키워드 검색"` |
+| 변경 파일 `src/App.tsx` · `src/styles.css` | 두 파일 모두 브랜딩 코드 없음 |
+
+검증: `git grep -n "EconMind" origin/main` → **`Dockerfile` 1행 주석이 전부.**
+`git log --all -S "EconMind"` → 해당 문자열을 도입한 커밋은 Dockerfile 추가 커밋뿐.
+`index.html`의 `<title>`도 여전히 `실시간 뉴스 분석 — Prototype`이다.
+
+**즉 최종보고서 「화면 1. 홈·검색 (EconMind 브랜딩)」 스크린샷은 커밋되지 않은 로컬 버전에서 찍힌 것이다.**
+
+> W11의 나머지 두 항목은 실재한다 — 추천 키워드 API 연동(`useEffect` + `fetchRecommendedKeywordLabels(8)` + 폴백)과
+> GDELT 본문 추출 파이프라인(`gdelt_client.py` · `content_extractor.py`)은 코드로 확인된다.
+>
+> **대응 선택지 2가지**
+> 1. 브랜딩을 실제로 커밋한다 (`PROJECT_TITLE` → EconMind 워드마크 + 서브타이틀, `index.html` title, placeholder). 30분이면 끝난다.
+> 2. 발표에서 화면 1을 **현재 캡처(2.9절)로 교체**하고 브랜딩은 "미반영"으로 정직하게 표기한다.
+>
+> 데모를 실제로 띄울 계획이라면 **1번**을 권한다. 발표 화면과 시연 화면이 다르면 그 자리에서 드러난다.
+
 
 ---
 
