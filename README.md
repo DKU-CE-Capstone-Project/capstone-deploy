@@ -1,5 +1,7 @@
 # EconMind — CNCF 배포 런북
 
+> 이 저장소는 **배포·인프라 런북**이다. 프로젝트 진행 현황·향후 계획·발표 자료는 [DKU-CE-Capstone-Project/econmind-docs](https://github.com/DKU-CE-Capstone-Project/econmind-docs)에 있다.
+
 ## 현재 GCP 서버 배포 (Docker Compose)
 
 서버: `35.216.13.110` · 서비스: https://econmind.duckdns.org
