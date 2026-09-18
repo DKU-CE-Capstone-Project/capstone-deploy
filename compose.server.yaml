@@ -11,20 +11,32 @@ x-logging: &logging
 x-backend-env: &backend-env
   NATS_URL: nats://nats:4222
   REDIS_URL: redis://redis:6379/0
-  # Mock is the default. Credentials in an old .env are not forwarded.
-  MONGODB_URI: ""
-  GOOGLE_API_KEY: ""
-  GEMINI_MODEL: gemini-flash-latest
+  # The existing server MongoDB connection (including SSH-tunnel deployments) is preserved.
+  MONGODB_URI: ${MONGODB_URI:?Set the server MongoDB URI in deploy/.env}
+  MONGODB_DB_NAME: ${MONGODB_DB_NAME:-capstone_news}
+  USE_MONGODB: "true"
+  MONGODB_REQUIRED: "true"
+  NEWS_PROVIDER: naver
+  NAVER_CLIENT_ID: ${NAVER_CLIENT_ID:?Set the NCP NAVER API HUB client ID}
+  NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET:?Set the NCP NAVER API HUB client secret}
+  DIFFBOT_TOKEN: ${DIFFBOT_TOKEN:?Set the Diffbot token}
+  GOOGLE_API_KEY: ${GOOGLE_API_KEY:?Set the Gemini API key}
+  GEMINI_MODEL: gemini-3.5-flash-lite
+  GEMINI_SERVICE_TIER: flex
+  GEMINI_TIMEOUT_SECONDS: "600"
+  LLM_MAX_OUTPUT_TOKENS: "2048"
+  EMBEDDING_TIMEOUT_SECONDS: "30"
+  METADATA_TIMEOUT_SECONDS: "660"
+  METADATA_BATCH_TIMEOUT_SECONDS: "660"
+  METADATA_CONCURRENCY: "3"
   LLM_PROVIDER: gemini
   ANTHROPIC_API_KEY: ""
-  DEMO_MODE: "true"
-  USE_MOCK_NEWS: "true"
-  USE_MONGODB: "false"
-  USE_GDELT: "false"
-  NEWSAPI_KEY: ""
+  DEMO_MODE: "false"
+  USE_MOCK_NEWS: "false"
+  USE_LLM_METADATA: "true"
   USE_LLM_SUMMARIES: "false"
-  USE_RAG: "false"
-  USE_CRITIC: "false"
+  USE_RAG: ${USE_RAG:-true}
+  USE_CRITIC: ${USE_CRITIC:-true}
   CORS_ORIGINS: ${APP_ORIGIN:-https://econmind.duckdns.org}
 
 services:
@@ -66,6 +78,8 @@ services:
     build: ../backend
     restart: unless-stopped
     environment: *backend-env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command:
       - uvicorn
       - app.main:app
@@ -87,7 +101,7 @@ services:
         - CMD
         - python
         - -c
-        - "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=5)); assert d.get('status')=='ok' and d.get('mongodb')=='off'"
+        - "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=5)); assert d.get('status')=='ok' and d.get('mongodb')=='on'"
       interval: 30s
       timeout: 10s
       retries: 3
@@ -101,6 +115,8 @@ services:
     restart: unless-stopped
     command: ["python", "-m", "app.worker"]
     environment: *backend-env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       econmind-api:
         condition: service_healthy
