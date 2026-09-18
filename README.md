@@ -21,7 +21,36 @@
 `econmind_redis_data`, `econmind_nats_data` Docker 볼륨을 이어 사용합니다.
 외부 공개 포트는 80/443이며, 점검용 프론트 포트 8080은 서버의 127.0.0.1에만 연결됩니다.
 
-GitHub 변경을 반영할 때 서버에서 실행합니다.
+### 2026-09-18 실제 뉴스 설정
+
+**GDELT의 반복적인 HTTP 429 오류 때문에 기본 공급원을 NCP NAVER API HUB로 변경했다. 해외 뉴스는 검토 예정이다.**
+프론트 검색은 20건 중 NAVER 뉴스 URL·분류 조건을 통과한 기사만 보여준다. 정치·사회와 분류 확인 실패는 제외한다. 상세는 description만 표시하고 **리포트 보기에서만 선택 기사 1건의 NAVER URL에 Diffbot을 호출**한다. 이미지의 QR 코드 후보는 제거한다. 메타데이터는 Gemini 3.5 Flash-Lite / Flex로 추출하며 규칙 fallback을 갖는다.
+
+서버 `deploy/.env`에는 다음 항목이 필요하다. 비밀값은 커밋하거나 프론트 빌드 인자로 넘기지 않는다.
+
+| 키 | 값의 출처 |
+|---|---|
+| `MONGODB_URI` | 서버의 기존 MongoDB 앱 계정 URI. 로컬 PC URI로 덮어쓰지 않음 |
+| `MONGODB_DB_NAME` | `capstone_news` |
+| `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | NCP NAVER API HUB 앱의 뉴스 검색 인증키 |
+| `DIFFBOT_TOKEN` | Diffbot Article API 토큰 |
+| `GOOGLE_API_KEY` | Gemini API 키 |
+| `APP_ORIGIN` | `https://econmind.duckdns.org` |
+| `USE_RAG`, `USE_CRITIC` | 기본 `true` |
+
+서버 Compose는 `NEWS_PROVIDER=naver`, `DEMO_MODE=false`, `USE_MOCK_NEWS=false`, `USE_MONGODB=true`, `MONGODB_REQUIRED=true`, `LLM_PROVIDER=gemini`, `GEMINI_MODEL=gemini-3.5-flash-lite`, `GEMINI_SERVICE_TIER=flex`를 API와 워커 모두에 전달한다. 키나 MongoDB URI가 빠지면 Compose 검증이 실패한다.
+
+현재 GCP의 MongoDB는 같은 VM의 컨테이너가 아니라 **기존 홈 서버 DB로 연결되는 SSH 역방향 터널**을 사용한다. 앱 URI의 호스트는 `host.docker.internal:27017`이며 `directConnection=true`를 유지한다. API·워커에 host-gateway 매핑을 추가했다. 이 Compose는 새 MongoDB를 만들지 않는다. 터널은 별도 운영 대상이다.
+
+이전 서버의 미추적 파일 `compose.server.mongo.yaml`은 보존·백업하되 현재 배포에는 합치지 않는다. 그 파일의 연결·호스트 매핑 역할을 기본 `compose.server.yaml`이 수행한다. `/ready`는 실제 DB ping을 검사하며 실패하면 503, 컨테이너는 unhealthy가 된다. 필수 저장 실패도 API에서 503으로 반환한다.
+
+Flex 생성은 호출당 최대 600초, 메타데이터 배치 전체는 660초, 임베딩은 30초로 제한한다. Nginx 프록시는 리포트 생성+검증을 고려해 1500초까지 기다린다. 별도의 GDELT 백그라운드 수집기를 추가하지 않는다.
+
+### 백업 후 main 배포
+
+각 저장소에서 로컬 검증 → PR → `main` 병합을 마친 뒤 배포한다. 먼저 기존 이미지에 rollback 태그를 붙이고, 서버 `.env`·Compose·Nginx·현재 Git SHA를 권한 0700 백업 디렉터리에 보관한다. 실제 MongoDB는 `mongodump --archive --gzip`으로 백업하고 `gzip -t`로 검증한다. DB 자격증명 파일은 0600으로 제한하며 로그에 URI를 출력하지 않는다.
+
+GitHub 변경을 반영할 때 서버에서 실행한다. 기존 `.env`는 덮어쓰지 않고 필요한 키만 갱신한다.
 
 ```bash
 cd /home/econmind/capstone
@@ -37,16 +66,23 @@ sudo docker compose -f compose.server.yaml up -d --no-build --wait --wait-timeou
 sudo docker compose -f compose.server.yaml up -d --no-deps --force-recreate frontend
 sudo docker compose -f compose.server.yaml ps
 curl -fsS https://econmind.duckdns.org/health
+curl -fsS https://econmind.duckdns.org/ready
 ```
 
 워커는 API와 같은 백엔드 이미지를 사용합니다. 빌드는 서버 자원을 고려해 순서대로 실행합니다.
-현재 구성은 기존 서버와 같은 데모 모드입니다. LLM/API 키와 MongoDB 사용은 활성화하지 않습니다.
+현재 서버 구성은 실제 뉴스·LLM·MongoDB를 활성화합니다. 로컬 데모와 기존 k3s 매니페스트는 별도입니다.
 서버의 `.env`는 Git에서 제외되며, `APP_ORIGIN`은 기본값으로 위 HTTPS 주소를 사용합니다.
 자동배포는 설치하지 않습니다. GitHub push 후 위의 pull·빌드·실행 명령으로 배포합니다.
 
 서비스를 내릴 때는 `sudo docker compose -f compose.server.yaml down`을 사용합니다.
 데이터·인증서를 유지하려면 `down -v`로 볼륨을 삭제하지 마세요.
-API 메모리의 뉴스·보고서 캐시는 재시작 시 초기화되며, Redis·NATS·인증서 볼륨은 유지됩니다.
+API 메모리 캐시는 재시작 시 초기화되지만 저장한 뉴스·본문·리포트·전략은 MongoDB에서 다시 읽습니다. Redis·NATS·인증서 볼륨도 유지됩니다.
+
+배포 후 HTTPS `/health`, `/ready`, 실제 NCP 검색·상세 description·Diffbot 리포트·MongoDB 저장을 확인한다. 자동 테스트는 fixture 기반이며 실제 API 검증 결과는 [릴리스 기록](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/07-news-release-2026-09-18.md)에 별도로 기록한다.
+
+### 롤백
+
+실패 시 백업한 Compose/Nginx/환경 파일과 기존 이미지의 rollback 태그를 복구해 같은 `econmind` 프로젝트로 다시 기동한다. 이전 Mongo overlay를 사용하던 구성으로 돌아갈 때는 백업한 overlay도 함께 지정한다. Git 상태는 기록한 SHA를 기준으로 복구하되 서버의 미추적 사용자 파일을 삭제하지 않는다. 이번 변경은 DB 컬렉션 삭제나 validator 강제 승격을 하지 않는다. DB 복원은 필요할 때만 별도 점검 후 수행한다.
 
 ---
 
