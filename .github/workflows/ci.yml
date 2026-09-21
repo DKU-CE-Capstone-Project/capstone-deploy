@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-compose:
+    name: Validate server Compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MONGODB_URI: mongodb://ci:ci@127.0.0.1:27017/capstone_news?authSource=admin
+      MONGODB_DB_NAME: capstone_news
+      NAVER_CLIENT_ID: ci-client-id
+      NAVER_CLIENT_SECRET: ci-client-secret
+      DIFFBOT_TOKEN: ci-diffbot-token
+      GOOGLE_API_KEY: ci-google-key
+      APP_ORIGIN: https://example.invalid
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Compose configuration
+        run: docker compose -f compose.server.yaml config --quiet
