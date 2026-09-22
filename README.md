@@ -64,12 +64,17 @@ sudo docker compose -f compose.server.yaml config -q
 sudo docker compose -f compose.server.yaml build econmind-api
 sudo docker compose -f compose.server.yaml build frontend
 sudo docker compose -f compose.server.yaml up -d --no-build --wait --wait-timeout 180
-# API 컨테이너 주소가 바뀐 경우 Nginx가 새 주소를 조회하도록 다시 생성합니다.
-sudo docker compose -f compose.server.yaml up -d --no-deps --force-recreate frontend
 sudo docker compose -f compose.server.yaml ps
 curl -fsS https://econmind.duckdns.org/health
 curl -fsS https://econmind.duckdns.org/ready
 ```
+
+> 예전에는 마지막에 `up -d --no-deps --force-recreate frontend`로 프론트를 다시 만들어야 했습니다.
+> `nginx.server.conf`가 `proxy_pass`에 호스트명을 리터럴로 써서, Nginx가 기동 시점에 해석한
+> `econmind-api` IP를 계속 들고 갔기 때문입니다. API 컨테이너를 재생성하면 IP가 바뀌는데
+> Nginx는 죽은 IP로 계속 프록시해 502가 났습니다.
+> 지금은 `$econmind_backend` 변수를 거쳐 요청 시점에 해석하므로 이 단계가 필요 없습니다.
+> 자세한 내용은 `nginx.server.conf` 주석을 참고하세요.
 
 워커는 API와 같은 백엔드 이미지를 사용합니다. 빌드는 서버 자원을 고려해 순서대로 실행합니다.
 이 PR의 서버 Compose 설정은 병합·배포 시 실제 뉴스·LLM·MongoDB를 활성화합니다. 로컬 데모와 기존 k3s 매니페스트는 별도입니다.

@@ -20,6 +20,21 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
+          # /healthz 는 nginx 가 직접 200 을 돌려주는 프론트 자체 생존 확인용이다.
+          # /health 는 econmind-api 로 프록시되므로 백엔드가 내려가면 502 가 되어
+          # 프론트 파드까지 죽는다 — 프로브에 쓰면 안 된다.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 20
           resources:
             requests:
               cpu: "50m"
