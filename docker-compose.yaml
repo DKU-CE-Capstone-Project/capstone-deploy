@@ -1,4 +1,5 @@
 # 로컬 검증용 — k3s 이관 전 burst→worker 분산 처리를 먼저 확인한다.
+# 호스트에서 쓰는 포트는 loopback에만 바인딩한다. 서버 설정과 합성해도 유지한다.
 # 수동 스케일: docker compose up --scale econmind-worker=5
 #
 # ⚠ 이 서버는 RAM 8GB 다. 모든 서비스에 메모리 상한이 걸려 있다(아래 예산표).
@@ -19,14 +20,14 @@ services:
     image: nats:2.10-alpine
     command: ["-js", "-m", "8222"]      # JetStream + 모니터링(8222)
     ports:
-      - "4222:4222"
-      - "8222:8222"
+      - "127.0.0.1:4222:4222"
+      - "127.0.0.1:8222:8222"
     mem_limit: 128m
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     mem_limit: 128m
 
   # ── MongoDB (영속화 + 벡터검색) ──────────────────────────────────────────
@@ -119,7 +120,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       NEWSAPI_KEY: ${NEWSAPI_KEY:-}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       nats:
         condition: service_started
@@ -151,7 +152,7 @@ services:
       args:
         VITE_API_BASE: ""
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     depends_on:
       - econmind-api
     mem_limit: 128m

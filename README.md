@@ -114,7 +114,9 @@ cp .env.example .env                   # ← 최초 1회. MongoDB 계정을 채�
 docker compose up --build -d           # nats + redis + mongodb + api + worker(1) + frontend
 docker compose ps                      # mongodb 가 healthy 가 될 때까지 대기 (첫 기동 ~2-3분)
 ```
-UI: http://localhost:8080  ·  API: http://localhost:8000/health
+UI: http://127.0.0.1:8080  ·  API: http://127.0.0.1:8000/health
+
+로컬 데모의 API·UI·Redis·NATS 포트는 호스트의 127.0.0.1에만 바인딩된다. 외부 접속은 서버용 Compose의 Caddy(80/443)를 사용한다.
 
 burst 부하 실험은 **반드시 burst 오버레이와 함께** 돌린다 — 기본 프로파일로 워커를 10개
 띄우면 MongoDB 와 합쳐 8GB 서버에서 OOM 난다. 아래 「⚠ burst 데모와 동시 실행 금지」 참고.
