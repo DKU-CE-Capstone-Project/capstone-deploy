@@ -2,7 +2,35 @@
 
 > 이 저장소는 **배포·인프라 런북**이다. 프로젝트 진행 현황·향후 계획·발표 자료는 [DKU-CE-Capstone-Project/econmind-docs](https://github.com/DKU-CE-Capstone-Project/econmind-docs)에 있다.
 
-**적용 범위 (2026-09-20):** 아래 실제 뉴스·MongoDB 서버 설정은 `codex/news-session-20260918`의 [배포 PR #7](https://github.com/DKU-CE-Capstone-Project/capstone-deploy/pull/7)에 있다. 배포 저장소 `main`에는 아직 병합되지 않았으며, 이번 문서 확인은 운영 서버에 이 구성이 적용됐는지 검증하지 않았다. 함께 검토할 [백엔드 PR #6](https://github.com/DKU-CE-Capstone-Project/capstone-backend/pull/6)·[프론트엔드 PR #7](https://github.com/DKU-CE-Capstone-Project/capstone-frontend/pull/7)과 [뉴스 세션 API 명세](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/07-api-spec.md)를 참고한다.
+**적용 범위 (2026-09-30):** 이 README는 로컬 `article-api`의 배포 설정을 설명한다. 기존 뉴스 세션 설정은 정본의 2026-09-21 병합 기록을 따르며, 이번 변경은 뉴스맵 환경변수 전달과 로컬 구성 검증이다. 원격 반영·운영 서버 접속·재시작·배포는 수행하지 않았다. 아래 GCP·k3s 운영 기록은 각 기준일의 기록이고 현재 서버 상태를 뜻하지 않는다.
+
+## 뉴스맵 설정 전달 (2026-09-30)
+
+백엔드는 제목·NAVER description의 Gemini 임베딩과 서버 코사인으로 후보를 평가한 뒤 필터·정렬·최종 제한을 적용한다. 프론트의 `/related?tier=FREE` 요청은 주변 최대 3건을 표시하며 부족한 결과를 `/graph`로 채우지 않는다. 이 tier는 실제 구독 확인과는 별개다. 뉴스맵 요청은 Diffbot 본문 추출을 새로 호출하지 않는다.
+
+다음 비밀값이 아닌 설정을 [.env.example](.env.example)에 추가했고 [서버 Compose](compose.server.yaml)·[로컬 Compose](docker-compose.yaml)가 API와 워커 모두에 전달한다. 기존 `.env`를 덮어쓰지 말고 필요한 설정만 반영한다. 가중치·임계값은 실제 뉴스 품질 평가 전 초기값이다.
+
+| 환경변수 | 기본값 | 역할 |
+|---|---|---|
+| `NEWS_MAP_EMBEDDING_MODEL` | `gemini-embedding-001` | 뉴스맵 전용 모델 |
+| `NEWS_MAP_EMBEDDING_DIMENSIONS` | `768` | 요청·검증 차원 |
+| `NEWS_MAP_EMBEDDING_TASK_TYPE` | `SEMANTIC_SIMILARITY` | 중심·후보 공통 용도 |
+| `NEWS_MAP_CANDIDATE_LIMIT` | `40` | 표시 limit과 별개인 후보 예산 |
+| `NEWS_MAP_EMBEDDING_CONCURRENCY` | `3` | 벡터 생성 동시성 |
+| `NEWS_MAP_MIN_RELEVANCE` | `0.65` | 최소 최종 연관도 |
+| `NEWS_MAP_KEYWORD_WEIGHT` | `0.10` | 보조 키워드 비중 |
+| `NEWS_MAP_ENTITY_ONLY_PENALTY` | `0.10` | 등록된 조직명만 겹칠 때 감점 |
+
+서버 Compose의 기존 `EMBEDDING_TIMEOUT_SECONDS=30`은 유지한다. 뉴스맵 벡터는 입력 해시·모델·차원·용도·전처리 버전과 함께 `news_map_embedding`에 저장하고 일치할 때 재사용한다. 기존 리포트 RAG의 `embedding`·768차원 `vector_index`와 별도이며 뉴스맵에서 MongoDB vector search 점수를 사용하지 않는다. 모델·차원을 바꾸어도 기존 DB 전체 삭제·일괄 재생성이나 RAG 인덱스 변경이 필요하지 않다. 필요한 기사만 다음 평가 시 갱신한다. 이 변경은 Compose에 적용했으며 기존 k3s 매니페스트의 뉴스맵 설정 전달은 이번 범위에서 변경·검증하지 않았다.
+
+로컬 검증은 다음 네 조합의 `config --format json` 결과를 [포트 검사](scripts/check-compose-ports.py)에 전달하고 API·워커의 8개 설정을 대조했다.
+
+- `compose.server.yaml`
+- `docker-compose.yaml`
+- `docker-compose.yaml` + `docker-compose.burst.yaml`
+- `docker-compose.yaml` + `compose.server.yaml`
+
+기본값과 변경값으로 총 8가지 구성·설정 검사를 통과했다. 필수 API 키·DB 계정은 검사용 대체 값을 사용했으며 실제 비밀값을 코드·출력에 넣지 않았다. 실제 Gemini 모델 지원·선정 품질·앱 컨테이너 실행·운영 DB·재시작·배포를 검증한 결과는 아니다. 날짜별 근거는 정본 `docs/99-verification.md`에 있다.
 
 ## GCP 서버 구성과 병합 후 배포 (Docker Compose)
 
@@ -17,13 +45,13 @@
 └── deploy/    # capstone-deploy (현재 저장소)
 ```
 
-기록된 서버 배포와 이 PR의 배포 절차는 `compose.server.yaml`을 사용합니다. 기존 `docker-compose.yaml`은 로컬 데모용입니다.
+기록된 서버 배포와 아래 배포 절차는 `compose.server.yaml`을 사용합니다. 기존 `docker-compose.yaml`은 로컬 데모용입니다.
 `Caddyfile`은 HTTPS 진입점, `nginx.server.conf`는 프론트에서 API로 전달하는 프록시 설정입니다.
 프로젝트 이름 `econmind`를 유지해 기존 `econmind_caddy_data`, `econmind_caddy_config`,
 `econmind_redis_data`, `econmind_nats_data` Docker 볼륨을 이어 사용합니다.
 외부 공개 포트는 80/443이며, 점검용 프론트 포트 8080은 서버의 127.0.0.1에만 연결됩니다.
 
-### 작업 브랜치의 실제 뉴스 설정
+### 서버의 실제 뉴스 설정
 
 **GDELT의 반복적인 HTTP 429 오류 때문에 기본 공급원을 NCP NAVER API HUB로 변경했다. 해외 뉴스는 검토 예정이다.**
 프론트 검색은 20건 중 NAVER 뉴스 URL·분류 조건을 통과한 기사만 보여준다. 정치·사회와 분류 확인 실패는 제외한다. 상세는 description만 표시하고 **리포트 보기에서만 선택 기사 1건의 NAVER URL에 Diffbot을 호출**한다. 이미지의 QR 코드 후보는 제거한다. 메타데이터는 Gemini 3.5 Flash-Lite / Flex로 추출하며 규칙 fallback을 갖는다.
@@ -42,9 +70,9 @@
 
 서버 Compose는 `NEWS_PROVIDER=naver`, `DEMO_MODE=false`, `USE_MOCK_NEWS=false`, `USE_MONGODB=true`, `MONGODB_REQUIRED=true`, `LLM_PROVIDER=gemini`, `GEMINI_MODEL=gemini-3.5-flash-lite`, `GEMINI_SERVICE_TIER=flex`를 API와 워커 모두에 전달한다. 키나 MongoDB URI가 빠지면 Compose 검증이 실패한다.
 
-2026-09-18 운영 기록상 GCP는 같은 VM의 MongoDB 컨테이너 대신 **기존 홈 서버 DB로 연결되는 SSH 역방향 터널**을 사용했다. 이 연결을 계속 사용할 경우 앱 URI의 호스트는 `host.docker.internal:27017`이고 `directConnection=true`가 필요하다. 이 PR은 API·워커에 host-gateway 매핑을 추가하지만 새 MongoDB나 터널을 만들지는 않는다. 배포 전에 서버의 실제 연결 상태를 다시 확인해야 한다.
+2026-09-18 운영 기록상 GCP는 같은 VM의 MongoDB 컨테이너 대신 **기존 홈 서버 DB로 연결되는 SSH 역방향 터널**을 사용했다. 이 연결을 계속 사용할 경우 앱 URI의 호스트는 `host.docker.internal:27017`이고 `directConnection=true`가 필요하다. 서버 Compose는 API·워커에 host-gateway 매핑을 제공하지만 새 MongoDB나 터널을 만들지는 않는다. 배포 전에 서버의 실제 연결 상태를 다시 확인해야 한다.
 
-이전 서버의 미추적 파일 `compose.server.mongo.yaml`은 보존·백업하되 이 PR의 배포에는 합치지 않는다. 그 파일의 연결·호스트 매핑 역할을 브랜치의 `compose.server.yaml`이 수행하도록 구성했다. `/ready`는 실제 DB ping을 검사하며 실패하면 503, 컨테이너는 unhealthy가 된다. 필수 저장 실패도 API에서 503으로 반환한다.
+이전 서버의 미추적 파일 `compose.server.mongo.yaml`은 보존·백업하되 아래 배포 절차에는 합치지 않는다. 그 파일의 연결·호스트 매핑 역할을 `compose.server.yaml`이 수행하도록 구성했다. `/ready`는 실제 DB ping을 검사하며 실패하면 503, 컨테이너는 unhealthy가 된다. 필수 저장 실패도 API에서 503으로 반환한다.
 
 Flex 생성은 호출당 최대 600초, 메타데이터 배치 전체는 660초, 임베딩은 30초로 제한한다. Nginx 프록시는 리포트 생성+검증을 고려해 1500초까지 기다린다. 별도의 GDELT 백그라운드 수집기를 추가하지 않는다.
 
@@ -77,7 +105,7 @@ curl -fsS https://econmind.duckdns.org/ready
 > 자세한 내용은 `nginx.server.conf` 주석을 참고하세요.
 
 워커는 API와 같은 백엔드 이미지를 사용합니다. 빌드는 서버 자원을 고려해 순서대로 실행합니다.
-이 PR의 서버 Compose 설정은 병합·배포 시 실제 뉴스·LLM·MongoDB를 활성화합니다. 로컬 데모와 기존 k3s 매니페스트는 별도입니다.
+서버 Compose 설정은 실제 뉴스·LLM·MongoDB를 활성화합니다. 로컬 데모와 기존 k3s 매니페스트는 별도입니다.
 서버의 `.env`는 Git에서 제외되며, `APP_ORIGIN`은 기본값으로 위 HTTPS 주소를 사용합니다.
 자동배포는 설치하지 않습니다. GitHub push 후 위의 pull·빌드·실행 명령으로 배포합니다.
 

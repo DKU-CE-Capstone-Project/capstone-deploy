@@ -1,3 +1,13 @@
+x-news-map-env: &news-map-env
+  NEWS_MAP_EMBEDDING_MODEL: ${NEWS_MAP_EMBEDDING_MODEL:-gemini-embedding-001}
+  NEWS_MAP_EMBEDDING_DIMENSIONS: ${NEWS_MAP_EMBEDDING_DIMENSIONS:-768}
+  NEWS_MAP_EMBEDDING_TASK_TYPE: ${NEWS_MAP_EMBEDDING_TASK_TYPE:-SEMANTIC_SIMILARITY}
+  NEWS_MAP_CANDIDATE_LIMIT: ${NEWS_MAP_CANDIDATE_LIMIT:-40}
+  NEWS_MAP_EMBEDDING_CONCURRENCY: ${NEWS_MAP_EMBEDDING_CONCURRENCY:-3}
+  NEWS_MAP_MIN_RELEVANCE: ${NEWS_MAP_MIN_RELEVANCE:-0.65}
+  NEWS_MAP_KEYWORD_WEIGHT: ${NEWS_MAP_KEYWORD_WEIGHT:-0.10}
+  NEWS_MAP_ENTITY_ONLY_PENALTY: ${NEWS_MAP_ENTITY_ONLY_PENALTY:-0.10}
+
 # 로컬 검증용 — k3s 이관 전 burst→worker 분산 처리를 먼저 확인한다.
 # 호스트에서 쓰는 포트는 loopback에만 바인딩한다. 서버 설정과 합성해도 유지한다.
 # 수동 스케일: docker compose up --scale econmind-worker=5
@@ -105,6 +115,7 @@ services:
   econmind-api:
     build: ../backend
     environment:
+      <<: *news-map-env
       NATS_URL: nats://nats:4222
       REDIS_URL: redis://redis:6379/0
       DEMO_MODE: "true"
@@ -134,6 +145,7 @@ services:
     build: ../backend
     command: ["python", "-m", "app.worker"]
     environment:
+      <<: *news-map-env
       NATS_URL: nats://nats:4222
       REDIS_URL: redis://redis:6379/0
       DEMO_MODE: "true"
