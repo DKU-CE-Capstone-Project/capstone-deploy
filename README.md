@@ -2,46 +2,46 @@
 
 > 이 저장소는 **배포·인프라 런북**이다. 프로젝트 진행 현황·향후 계획·발표 자료는 [DKU-CE-Capstone-Project/econmind-docs](https://github.com/DKU-CE-Capstone-Project/econmind-docs)에 있다.
 
-**적용 범위 (2026-10-01):** 이 README는 로컬 `article-api`의 배포 설정을 설명한다. 시작 커밋은 `cd9ab8068189fb22cc720ad259fed6890ffe039d`이며 미커밋 변경 없이 시작했다. 결과 커밋은 정본 `docs/99-verification.md`의 2026-10-01 기록에 남긴다. 기존 뉴스 세션 설정은 정본의 2026-09-21 병합 기록을 따르며, 이번 변경은 뉴스맵 환경변수 전달과 로컬 구성 검증이다. 원격 반영·운영 서버 접속·재시작·배포는 수행하지 않았다. 아래 GCP·k3s 운영 기록은 각 기준일의 기록이고 현재 서버 상태를 뜻하지 않는다.
+**적용 범위 (2026-10-01 2차):** 이 README는 로컬 `article-api`의 배포 설정을 설명한다. 2차 시작 커밋은 `445433d48ba4685f6ae6f061e41b5c238c89b1c1`이며 미커밋 변경 없이 시작했다. 결과 커밋은 정본 `docs/99-verification.md`의 2026-10-01 기록에 남긴다. 기존 뉴스 세션 설정은 정본의 2026-09-21 병합 기록을 따르며, 이번 변경은 뉴스맵 환경변수 전달과 로컬 구성 검증이다. 원격 반영·운영 서버 접속·재시작·배포는 수행하지 않았다. 아래 GCP·k3s 운영 기록은 각 기준일의 기록이고 현재 서버 상태를 뜻하지 않는다.
 
-## 뉴스맵 설정 전달 (2026-10-01)
+## 뉴스맵 설정 전달 (2026-10-01 2차)
 
-기존 ID·URL·정규화 텍스트 제거와 중심 연관도 순위만으로는 다른 언론사의 동일 발표가 남을 수 있었다. 백엔드는 Gemini 제목·description 벡터와 키워드 연관도 → 최소 기준 → 중심/후보 및 후보/후보의 반복 정보 판별 → MMR → 요금제 limit을 적용한다. 회사명/코사인만으로 같은 사건이라 판단하지 않으며 새 관점·모델·수치·시점 차이는 보존한다. 응답 점수는 중심 연관도이고 서버 표시 순서는 MMR 결과다. 프론트의 FREE 요청은 주변 최대 3건, 부족하면 0·1·2건을 표시하며 `/graph`로 채우지 않는다. tier 쿼리는 인증된 구독 확인이 아니다.
+백엔드는 같은 소식의 다른 보도를 주변 기사 자리에서 빼 **같은 소식 묶음**(`same_story`)으로 응답하고, 의미 있는 주변 기사가 부족할 때만 고유 후보를 **최초 20개에서 최대 50개까지** 확장한다. 선정 순서는 식별 중복(같은 ID·URL) 제외 → Gemini 연관도·최소 기준 → 같은 소식 판별·묶음 → MMR → 요금제 limit이다. 응답 점수는 중심 연관도이고 표시 순서는 MMR 결과다. FREE/BASIC 주변 최대 3건·점수 `null`은 유지하며 tier 쿼리는 인증된 구독 확인이 아니다. 판별 규칙·API 계약은 백엔드 README와 정본 문서를 따른다.
 
-다음 비밀값이 아닌 20개 설정을 [.env.example](.env.example)에 명시했고 [서버 Compose](compose.server.yaml)·[로컬 Compose](docker-compose.yaml)가 API와 워커 모두에 전달한다. 이번에는 반복 보도·MMR·제한 수집의 12개 설정을 추가했다. 현재 뉴스맵 HTTP 수집·선정 소비자는 API이며 워커에도 같은 백엔드 설정을 전달해 이미지/환경 일관성을 유지한다. 기존 `.env`를 덮어쓰지 말고 필요한 설정만 반영한다. 가중치·임계값은 실제 뉴스 품질 평가 전 초기값이다.
+비밀값이 아닌 22개 설정을 [.env.example](.env.example)에 명시했고 [서버 Compose](compose.server.yaml)·[로컬 Compose](docker-compose.yaml)가 API와 워커 모두에 전달한다. 뉴스맵 수집·선정 소비자는 API이며 워커에도 같은 백엔드 설정을 전달해 이미지/환경 일관성을 유지한다. 기존 `.env`를 덮어쓰지 말고 필요한 설정만 반영한다.
 
 | 환경변수 | 기본값 | 역할 |
 |---|---|---|
 | `NEWS_MAP_EMBEDDING_MODEL` | `gemini-embedding-001` | 뉴스맵 전용 모델 |
 | `NEWS_MAP_EMBEDDING_DIMENSIONS` | `768` | 요청·검증 차원 |
 | `NEWS_MAP_EMBEDDING_TASK_TYPE` | `SEMANTIC_SIMILARITY` | 중심·후보 공통 용도 |
-| `NEWS_MAP_CANDIDATE_LIMIT` | `40` | 표시 limit과 별개인 후보 예산 |
+| `NEWS_MAP_INITIAL_CANDIDATES` | `20` | 최초 라운드 고유 후보(원래 검색 순위 순) |
+| `NEWS_MAP_MAX_CANDIDATES` | `50` | 요청당 평가 고유 주변 후보 총상한(중심·같은 ID/URL 제외, 모든 출처 합산) |
 | `NEWS_MAP_EMBEDDING_CONCURRENCY` | `3` | 벡터 생성 동시성 |
 | `NEWS_MAP_MIN_RELEVANCE` | `0.65` | 최소 최종 연관도 |
 | `NEWS_MAP_KEYWORD_WEIGHT` | `0.10` | 보조 키워드 비중 |
 | `NEWS_MAP_ENTITY_ONLY_PENALTY` | `0.10` | 등록된 조직명만 겹칠 때 감점 |
 | `NEWS_MAP_MMR_LAMBDA` | `0.70` | 관련성 비중; 주변 간 최대 코사인 감점 비중 0.30 |
-| `NEWS_MAP_REPEAT_COSINE` | `0.92` | 반복 판별 필요조건 |
-| `NEWS_MAP_REPEAT_TEXT_SIMILARITY` | `0.55` | 설명 및 제목/설명 평균 Dice 하한 |
-| `NEWS_MAP_REPEAT_SHORT_TEXT_SIMILARITY` | `0.85` | 짧은 설명에서 제목 Dice 하한 |
-| `NEWS_MAP_REPEAT_MAX_HOURS` | `48` | 완전한 공통 사건 날짜가 없을 때 발행 시각 간격 |
+| `NEWS_MAP_REPEAT_COSINE` | `0.92` | 같은 소식 판별 필요조건(단독 판정 금지) |
+| `NEWS_MAP_REPEAT_TEXT_SIMILARITY` | `0.55` | 설명 포함률 기준 |
+| `NEWS_MAP_REPEAT_TITLE_SIMILARITY` | `0.50` | 제목 문자 유사도 기준 |
+| `NEWS_MAP_REPEAT_SHORT_TEXT_SIMILARITY` | `0.85` | 짧은 설명에서 제목 유사도 기준 |
+| `NEWS_MAP_REPEAT_MAX_HOURS` | `48` | 같은 소식 인정 발행 시각 간격 |
 | `NEWS_MAP_REPEAT_DESCRIPTION_MIN_CHARS` | `40` | 짧은 설명 경계 |
-| `NEWS_MAP_REPEAT_NOVELTY_RATIO` | `0.25` | 짧은 설명의 새 문구 비중이 넘으면 보존 |
-| `NEWS_MAP_SUPPLEMENT_MAX_SEARCHES` | `2` | 유효 후보 부족 시 추가 검색 수; 0이면 해제 |
-| `NEWS_MAP_SUPPLEMENT_PAGE_SIZE` | `12` | 추가 검색 요청 크기 |
-| `NEWS_MAP_SUPPLEMENT_CANDIDATE_LIMIT` | `20` | 추가 고유 후보 상한; 0이면 해제 |
-| `NEWS_MAP_SUPPLEMENT_TIMEOUT_SECONDS` | `20` | 추가 수집·저장·선정 전체 초 |
-| `NEWS_MAP_SUPPLEMENT_CACHE_TTL_SECONDS` | `60` | 프로세스 로컬 성공/빈 결과 캐시 초 |
+| `NEWS_MAP_REPEAT_NOVELTY_RATIO` | `0.25` | 제목 새 단어 비율 기준 |
+| `NEWS_MAP_SAME_STORY_LIMIT` | `10` | 노드마다 응답에 담는 같은 소식 카드 수 |
+| `NEWS_MAP_SUPPLEMENT_MAX_SEARCHES` | `3` | 외부 검색 단계 상한(근거 검색어·원래 검색어 다음 위치); 0이면 외부 확장 해제 |
+| `NEWS_MAP_SUPPLEMENT_PAGE_SIZE` | `20` | 외부 검색 한 번의 NAVER 원시 요청 건수 |
+| `NEWS_MAP_SUPPLEMENT_TIMEOUT_SECONDS` | `20` | 확장 전체 초(검색·분류 확인·저장·임베딩·재선정) |
+| `NEWS_MAP_SUPPLEMENT_CACHE_TTL_SECONDS` | `60` | 프로세스 로컬 검색 페이지 성공/빈 결과 캐시 초(실패 5초) |
 
-λ=0.70은 관련성 우선의 출발점이며 높은 반복 코사인·문자 유사도와 보수적인 시간/짧은 설명 처리는 오탐을 줄이려는 초기 기준이다. 2회·20건·20초는 비용/대기 예산이다. 모두 실뉴스로 튜닝해야 하며 최적값으로 검증하지 않았다.
+1차의 `NEWS_MAP_CANDIDATE_LIMIT`(40)·`NEWS_MAP_SUPPLEMENT_CANDIDATE_LIMIT`(20)은 하나의 총상한 `NEWS_MAP_MAX_CANDIDATES`로 대체해 삭제했다. 기존 `.env`에 남은 두 키는 백엔드가 무시한다. `NEWS_MAP_INITIAL_CANDIDATES`가 `NEWS_MAP_MAX_CANDIDATES`보다 크면 백엔드 설정 검증이 실패한다. 임계값·예산은 2026-10-01 실제 뉴스 표본으로 보정한 초기값이며 최적값으로 검증하지 않았다.
 
-원래 후보를 먼저 평가하고 유효 결과가 요청·요금제 목표보다 부족할 때만 중심의 실제 제목·설명·키워드로 다른 검색어를 만든다. 기본 후보 예산은 총 40+20건이다. 원래 검색어·중복 요청은 제외하며 검색 성공/빈 결과 60초(128키), 실패 5초, 동시 동일 검색 단일 요청을 사용한다. API 프로세스 사이에는 캐시가 공유되지 않는다. 보충은 strict NAVER와 명시적 mock에만 허용하고 실제 GDELT/NewsAPI의 샘플 fallback 경로는 사용하지 않는다.
+**비용·대기:** 확장은 최초 후보로 표시 목표를 못 채울 때만 실행한다. 외부 검색 한 단계는 NAVER 검색 1회 + 새 후보의 NAVER 페이지 분류 확인(필요한 수만큼) + 새 후보 뉴스맵 임베딩이다. 2026-10-01 로컬 실측(실제 NAVER·Gemini, 1회성)에서 확장이 필요했던 요청은 검색 1단계·임베딩 25건·분류 확인 9건에 약 6.8초, 확장이 필요 없는 요청은 외부 검색 0회였다. Diffbot 본문 추출·리포트·Flex 메타데이터·RAG 임베딩은 확장에서 호출하지 않는다. 확장 중 검색 실패·시간 초과는 오류가 아니라 최초 결과를 담은 200 `partial`이며, 최초 라운드 임베딩 실패만 503이다. 기존 1500초 프록시 제한은 리포트/Flex 경로용이라 바꾸지 않았고 뉴스맵 시간 예산은 API 내부에서 적용한다. 검색 캐시는 API 프로세스 로컬이며 여러 프로세스 간에는 공유되지 않는다. k3s 매니페스트의 뉴스맵 설정 전달은 이번 범위에서 변경·검증하지 않았다.
 
-추가 검색은 기본 최대 2회이며 NAVER 분류/OG 이미지 HTTP와 캐시 없는 추가 후보 최대 20건의 뉴스맵 임베딩 비용이 발생할 수 있다. 기사 쌍 비교는 로컬이며 새 생성 API·Diffbot·RAG 임베딩은 보충에서 호출하지 않는다. 메타데이터는 저장 결과/규칙을 사용하고 일반 검색의 AI/RAG 처리는 유지한다. 추가 전체 시간 초과는 504, 공급원 오류는 기존 502·503·504, 임베딩 실패는 503이다. 일부 결과를 성공으로 숨기지 않는다. 기존 1500초 프록시 제한은 리포트/Flex 경로에도 사용하므로 변경하지 않았으며 뉴스맵의 추가 시간 예산은 API 내부에서 적용한다.
+서버 Compose의 기존 `EMBEDDING_TIMEOUT_SECONDS=30`은 유지한다. 뉴스맵 벡터는 입력 해시·모델·차원·용도·전처리 버전과 함께 `news_map_embedding`에 저장하고 일치할 때 재사용한다. 리포트 RAG의 `embedding`·768차원 `vector_index`와 별도다. 검색 순위 보존용 `_search_rank`·`_search_end`·`_searched_at` 필드가 news 문서에 추가되며, mongo-init validator는 최상위 추가 필드를 허용하므로 스키마 변경이 필요 없다.
 
-서버 Compose의 기존 `EMBEDDING_TIMEOUT_SECONDS=30`은 유지한다. 뉴스맵 벡터는 입력 해시·모델·차원·용도·전처리 버전과 함께 `news_map_embedding`에 저장하고 일치할 때 재사용한다. 기존 리포트 RAG의 `embedding`·768차원 `vector_index`와 별도이며 뉴스맵에서 MongoDB vector search 점수를 사용하지 않는다. 모델·차원을 바꾸어도 기존 DB 전체 삭제·일괄 재생성이나 RAG 인덱스 변경이 필요하지 않다. 필요한 기사만 다음 평가 시 갱신한다. 이 변경은 Compose에 적용했으며 기존 k3s 매니페스트의 뉴스맵 설정 전달은 이번 범위에서 변경·검증하지 않았다.
-
-2026-10-01 [설정 검사](scripts/check-news-map-settings.py)는 백엔드 Settings·두 `.env.example`의 20개 기본값을 대조하고 다음 네 Compose 조합의 기본값/변경값을 API·워커에 각각 확인한다. `config --format json` 결과는 기존 [포트 검사](scripts/check-compose-ports.py)에도 전달한다. CI도 같은 검사 스크립트를 실행하도록 갱신했다.
+2026-10-01 2차 [설정 검사](scripts/check-news-map-settings.py)는 백엔드 Settings·두 `.env.example`의 22개 기본값을 대조하고 다음 네 Compose 조합의 기본값/변경값을 API·워커에 각각 확인한다. `config --format json` 결과는 기존 [포트 검사](scripts/check-compose-ports.py)에도 전달한다.
 
 - `compose.server.yaml`
 - `docker-compose.yaml`
@@ -52,7 +52,7 @@
 python3 scripts/check-news-map-settings.py --backend-root ../capstone-backend
 ```
 
-기본값과 변경값으로 총 **8가지 구성 × 20개 설정 × API/워커 전달 및 포트 검사 통과**. Docker Compose v5.3.0에서 구문을 검사했다. `--env-file /dev/null`·검사용 인증값을 사용해 실제 `.env`를 읽거나 출력하지 않는다. 2026-09-30의 8개 설정/8가지 검사 기록은 그 날짜의 결과이며 이번 20개 검사와 구분한다. 실제 외부 API·실뉴스 선정 품질·앱 이미지 빌드·운영 DB·운영 재시작·배포·원격 CI는 검증하지 않았다. k3s 경로는 이번 Compose 작업의 대상이 아니며 별도 전달 검증이 필요하다. 날짜별 근거는 정본 `docs/99-verification.md`에 있다.
+기본값과 변경값으로 총 **8가지 구성 × 22개 설정 × API/워커 전달 및 포트 검사 통과**(Docker Compose v5.3.0). 검사용 변경값(최초 15·총 35 등)은 백엔드 Settings 검증도 별도로 통과했고, 최초>총상한 조합은 거부됨을 확인했다. `--env-file /dev/null`·검사용 인증값을 사용해 실제 `.env`를 읽거나 출력하지 않는다. 1차(20개)·2026-09-30(8개) 기록은 각 날짜의 결과다. 앱 이미지 빌드·운영 DB·운영 재시작·배포·원격 CI는 검증하지 않았다. 날짜별 근거는 정본 `docs/99-verification.md`에 있다.
 
 ## GCP 서버 구성과 병합 후 배포 (Docker Compose)
 
