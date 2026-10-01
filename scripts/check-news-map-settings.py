@@ -30,7 +30,6 @@ OVERRIDES = {
     "NEWS_MAP_REPEAT_MAX_HOURS": "24",
     "NEWS_MAP_REPEAT_DESCRIPTION_MIN_CHARS": "80",
     "NEWS_MAP_REPEAT_NOVELTY_RATIO": "0.1",
-    "NEWS_MAP_SAME_STORY_LIMIT": "5",
     "NEWS_MAP_SUPPLEMENT_MAX_SEARCHES": "1",
     "NEWS_MAP_SUPPLEMENT_PAGE_SIZE": "5",
     "NEWS_MAP_SUPPLEMENT_TIMEOUT_SECONDS": "10",
@@ -88,6 +87,7 @@ def main():
             config = json.loads(output)
             for service in ("econmind-api", "econmind-worker"):
                 actual = config["services"][service]["environment"]
+                assert {key for key in actual if key.startswith("NEWS_MAP_")} == expected.keys(), "Unexpected map setting"
                 for key, value in expected.items():
                     assert str(actual.get(key)) == value, f"{' + '.join(files)} {label} {service} {key}"
             subprocess.run([sys.executable, str(ROOT / "scripts/check-compose-ports.py")],
