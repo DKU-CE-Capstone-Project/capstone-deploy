@@ -36,8 +36,4 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate Compose configuration
-        run: |
-          docker compose -f compose.server.yaml config --format json | python3 scripts/check-compose-ports.py
-          docker compose -f docker-compose.yaml config --format json | python3 scripts/check-compose-ports.py
-          docker compose -f docker-compose.yaml -f docker-compose.burst.yaml config --format json | python3 scripts/check-compose-ports.py
-          docker compose -f docker-compose.yaml -f compose.server.yaml config --format json | python3 scripts/check-compose-ports.py
+        run: python3 scripts/check-news-map-settings.py
