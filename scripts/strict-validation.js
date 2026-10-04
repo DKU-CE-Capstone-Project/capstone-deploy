@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // reports / strategies 의 validationAction 을 warn → error 로 승격.
 //
-// 언제 실행하나: 백엔드 정합화(작업범위 3)가 끝나 reports/strategies 문서가
-// 「구조크」스키마(sections 7개, backtest 블록, BSON date 등)로 저장되기 시작한 뒤.
-// 그 전에 실행하면 save_report/save_strategy 가 조용히 실패한다.
+// 언제 실행하나: reports 는 백엔드가 schema_version 2 로 저장하기 시작하고
+// scripts/migrate-reports-v2.js 로 기존 문서를 변환한 뒤. 위반 문서가 0건인지 먼저 확인한다.
+// strategies 는 MONGODB_STRICT_COLLECTIONS=reports,strategies 로 명시할 때만 승격한다.
 //
 //   docker compose exec -T -e HOME=/tmp mongodb sh -c \
 //     'mongosh "mongodb://$MONGODB_INITDB_ROOT_USERNAME:$MONGODB_INITDB_ROOT_PASSWORD@localhost:27017/?authSource=admin" \
@@ -13,9 +13,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 const DB_NAME = process.env.MONGODB_INITDB_DATABASE || 'capstone_news';
 const ACTION = process.env.MONGODB_VALIDATION_ACTION || 'error';
+// 기본은 reports 만 승격한다. strategies 는 설계(백테스트)와 앱 형태가 달라 M6 전까지 warn 유지.
+const TARGETS = (process.env.MONGODB_STRICT_COLLECTIONS || 'reports').split(',').map((s) => s.trim()).filter(Boolean);
 const d = db.getSiblingDB(DB_NAME);
 
-for (const name of ['reports', 'strategies']) {
+for (const name of TARGETS) {
   const info = d.getCollectionInfos({ name })[0];
   if (!info) { print(`[strict] ${name} 없음 — 건너뜀`); continue; }
 
