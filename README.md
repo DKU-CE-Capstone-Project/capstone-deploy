@@ -2,7 +2,60 @@
 
 > 이 저장소는 **배포·인프라 런북**이다. 프로젝트 진행 현황·향후 계획·발표 자료는 [DKU-CE-Capstone-Project/econmind-docs](https://github.com/DKU-CE-Capstone-Project/econmind-docs)에 있다.
 
-**적용 범위 (2026-09-20):** 아래 실제 뉴스·MongoDB 서버 설정은 `codex/news-session-20260918`의 [배포 PR #7](https://github.com/DKU-CE-Capstone-Project/capstone-deploy/pull/7)에 있다. 배포 저장소 `main`에는 아직 병합되지 않았으며, 이번 문서 확인은 운영 서버에 이 구성이 적용됐는지 검증하지 않았다. 함께 검토할 [백엔드 PR #6](https://github.com/DKU-CE-Capstone-Project/capstone-backend/pull/6)·[프론트엔드 PR #7](https://github.com/DKU-CE-Capstone-Project/capstone-frontend/pull/7)과 [뉴스 세션 API 명세](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/07-api-spec.md)를 참고한다.
+**적용 범위 (2026-10-02):** 기존 로컬 `article-api/908e328`에서 작업했고 이번 시작 시 변경이 없었다. 현재 뉴스맵 설정 제거와 로컬 검증 결과/실제 코드 커밋은 정본 `docs/99-verification.md`의 2026-10-02 기록을 따른다. 원격 반영·운영 서버 접속·재시작·배포는 수행하지 않았다. 아래 2026-10-01 실측과 GCP·k3s 기록은 각 기준일의 기록이다.
+
+## 뉴스맵 대표 기사 설정 전달 (2026-10-02)
+
+백엔드는 반복 보도를 표시에서 제외하고 중심과 유용한 주변 대표만 응답한다. 중복 제외/명시적 보류 이후 부족할 때만 고유 후보를 **최초 20개에서 최대 50개까지** 확장한다. 선정 순서는 식별 중복 제외 → 기존 Gemini 연관도/최소 기준 → 중심 반복/보류·입력 연결 검사 → 실제 표시 대표와 직접 비교하면서 기존 MMR → 요금제 limit이다. 점수는 중심 연관도이며 FREE/BASIC 주변 최대 3건·점수 `null`, PAID 상한, 기존 확장/시간/캐시를 유지한다. tier 쿼리는 인증된 구독 확인이 아니다.
+
+더 이상 사용하지 않는 `NEWS_MAP_SAME_STORY_LIMIT`을 환경 예시와 API/워커 공통 Compose 설정에서 삭제했다. 다른 뉴스맵 기본값/override는 그대로다. 두 API에서 묶음 필드/스키마가 제거되는 **응답 계약 변경**과 프론트 동시 반영은 백엔드 README·정본 `docs/07-api-spec.md`를 따른다. 배포나 DB 삭제 작업은 없다. 아래 설정 표는 현재 21개 설정이며, 이전 날짜의 검증 절은 당시 기록이다.
+
+2026-10-02 로컬 검증: `python3 scripts/check-news-map-settings.py --backend-root ../capstone-backend` 통과. Settings/양쪽 `.env.example`의 **21개** 기본값 일치와 **4가지 Compose 조합 × 기본/override 8가지 × API/워커**의 값·추가 뉴스맵 설정 없음·포트 정책을 확인했다. 실제 `.env`를 읽지 않도록 `--env-file /dev/null`과 가상 인증값을 사용하고 서비스/운영 DB를 시작하지 않았다.
+
+비밀값이 아닌 21개 설정을 [.env.example](.env.example)에 명시했고 [서버 Compose](compose.server.yaml)·[로컬 Compose](docker-compose.yaml)가 API와 워커 모두에 전달한다. 뉴스맵 수집·선정 소비자는 API이며 워커에도 같은 백엔드 설정을 전달해 이미지/환경 일관성을 유지한다. 기존 `.env`를 덮어쓰지 말고 필요한 설정만 반영한다.
+
+| 환경변수 | 기본값 | 역할 |
+|---|---|---|
+| `NEWS_MAP_EMBEDDING_MODEL` | `gemini-embedding-001` | 뉴스맵 전용 모델 |
+| `NEWS_MAP_EMBEDDING_DIMENSIONS` | `768` | 요청·검증 차원 |
+| `NEWS_MAP_EMBEDDING_TASK_TYPE` | `SEMANTIC_SIMILARITY` | 중심·후보 공통 용도 |
+| `NEWS_MAP_INITIAL_CANDIDATES` | `20` | 최초 라운드 고유 후보(원래 검색 순위 순) |
+| `NEWS_MAP_MAX_CANDIDATES` | `50` | 요청당 평가 고유 주변 후보 총상한(중심·같은 ID/URL 제외, 모든 출처 합산) |
+| `NEWS_MAP_EMBEDDING_CONCURRENCY` | `3` | 벡터 생성 동시성 |
+| `NEWS_MAP_MIN_RELEVANCE` | `0.65` | 최소 최종 연관도 |
+| `NEWS_MAP_KEYWORD_WEIGHT` | `0.10` | 보조 키워드 비중 |
+| `NEWS_MAP_ENTITY_ONLY_PENALTY` | `0.10` | 등록된 조직명만 겹칠 때 감점 |
+| `NEWS_MAP_MMR_LAMBDA` | `0.70` | 관련성 비중; 주변 간 최대 코사인 감점 비중 0.30 |
+| `NEWS_MAP_REPEAT_COSINE` | `0.92` | 반복 정보 판별 필요조건(단독 판정 금지) |
+| `NEWS_MAP_REPEAT_TEXT_SIMILARITY` | `0.55` | 설명 포함률 기준 |
+| `NEWS_MAP_REPEAT_TITLE_SIMILARITY` | `0.50` | 제목 문자 유사도 기준 |
+| `NEWS_MAP_REPEAT_SHORT_TEXT_SIMILARITY` | `0.85` | 짧은 설명에서 제목 유사도 기준 |
+| `NEWS_MAP_REPEAT_MAX_HOURS` | `48` | 반복 정보 인정 발행 시각 간격 |
+| `NEWS_MAP_REPEAT_DESCRIPTION_MIN_CHARS` | `40` | 짧은 설명 경계 |
+| `NEWS_MAP_REPEAT_NOVELTY_RATIO` | `0.25` | 제목 새 단어 비율 기준 |
+| `NEWS_MAP_SUPPLEMENT_MAX_SEARCHES` | `3` | 외부 검색 단계 상한(근거 검색어·원래 검색어 다음 위치); 0이면 외부 확장 해제 |
+| `NEWS_MAP_SUPPLEMENT_PAGE_SIZE` | `20` | 외부 검색 한 번의 NAVER 원시 요청 건수 |
+| `NEWS_MAP_SUPPLEMENT_TIMEOUT_SECONDS` | `20` | 확장 전체 초(검색·분류 확인·저장·임베딩·재선정) |
+| `NEWS_MAP_SUPPLEMENT_CACHE_TTL_SECONDS` | `60` | 프로세스 로컬 검색 페이지 성공/빈 결과 캐시 초(실패 5초) |
+
+1차의 `NEWS_MAP_CANDIDATE_LIMIT`(40)·`NEWS_MAP_SUPPLEMENT_CANDIDATE_LIMIT`(20)은 하나의 총상한 `NEWS_MAP_MAX_CANDIDATES`로 대체해 삭제했다. 기존 `.env`에 남은 두 키는 백엔드가 무시한다. `NEWS_MAP_INITIAL_CANDIDATES`가 `NEWS_MAP_MAX_CANDIDATES`보다 크면 백엔드 설정 검증이 실패한다. 임계값·예산은 2026-10-01 실제 뉴스 표본으로 보정한 초기값이며 최적값으로 검증하지 않았다.
+
+**비용·대기:** 확장은 최초 후보로 표시 목표를 못 채울 때만 실행한다. 외부 검색 한 단계는 NAVER 검색 1회 + 새 후보의 NAVER 페이지 분류 확인(필요한 수만큼) + 새 후보 뉴스맵 임베딩이다. 2026-10-01 로컬 실측(실제 NAVER·Gemini, 1회성)에서 확장이 필요했던 요청은 검색 1단계·임베딩 25건·분류 확인 9건에 약 6.8초, 확장이 필요 없는 요청은 외부 검색 0회였다. Diffbot 본문 추출·리포트·Flex 메타데이터·RAG 임베딩은 확장에서 호출하지 않는다. 확장 중 검색 실패·시간 초과는 오류가 아니라 최초 결과를 담은 200 `partial`이며, 최초 라운드 임베딩 실패만 503이다. 기존 1500초 프록시 제한은 리포트/Flex 경로용이라 바꾸지 않았고 뉴스맵 시간 예산은 API 내부에서 적용한다. 검색 캐시는 API 프로세스 로컬이며 여러 프로세스 간에는 공유되지 않는다. k3s 매니페스트의 뉴스맵 설정 전달은 이번 범위에서 변경·검증하지 않았다.
+
+서버 Compose의 기존 `EMBEDDING_TIMEOUT_SECONDS=30`은 유지한다. 뉴스맵 벡터는 입력 해시·모델·차원·용도·전처리 버전과 함께 `news_map_embedding`에 저장하고 일치할 때 재사용한다. 리포트 RAG의 `embedding`·768차원 `vector_index`와 별도다. 검색 순위 보존용 `_search_rank`·`_search_end`·`_searched_at` 필드가 news 문서에 추가되며, mongo-init validator는 최상위 추가 필드를 허용하므로 스키마 변경이 필요 없다.
+
+과거 2026-10-01 2차 [설정 검사](scripts/check-news-map-settings.py)는 백엔드 Settings·두 `.env.example`의 22개 기본값을 대조하고 다음 네 Compose 조합의 기본값/변경값을 API·워커에 각각 확인한다. `config --format json` 결과는 기존 [포트 검사](scripts/check-compose-ports.py)에도 전달한다.
+
+- `compose.server.yaml`
+- `docker-compose.yaml`
+- `docker-compose.yaml` + `docker-compose.burst.yaml`
+- `docker-compose.yaml` + `compose.server.yaml`
+
+```bash
+python3 scripts/check-news-map-settings.py --backend-root ../capstone-backend
+```
+
+기본값과 변경값으로 총 **8가지 구성 × 22개 설정 × API/워커 전달 및 포트 검사 통과**(Docker Compose v5.3.0). 검사용 변경값(최초 15·총 35 등)은 백엔드 Settings 검증도 별도로 통과했고, 최초>총상한 조합은 거부됨을 확인했다. `--env-file /dev/null`·검사용 인증값을 사용해 실제 `.env`를 읽거나 출력하지 않는다. 1차(20개)·2026-09-30(8개) 기록은 각 날짜의 결과다. 앱 이미지 빌드·운영 DB·운영 재시작·배포·원격 CI는 검증하지 않았다. 날짜별 근거는 정본 `docs/99-verification.md`에 있다.
 
 ## GCP 서버 구성과 병합 후 배포 (Docker Compose)
 
@@ -17,13 +70,13 @@
 └── deploy/    # capstone-deploy (현재 저장소)
 ```
 
-기록된 서버 배포와 이 PR의 배포 절차는 `compose.server.yaml`을 사용합니다. 기존 `docker-compose.yaml`은 로컬 데모용입니다.
+기록된 서버 배포와 아래 배포 절차는 `compose.server.yaml`을 사용합니다. 기존 `docker-compose.yaml`은 로컬 데모용입니다.
 `Caddyfile`은 HTTPS 진입점, `nginx.server.conf`는 프론트에서 API로 전달하는 프록시 설정입니다.
 프로젝트 이름 `econmind`를 유지해 기존 `econmind_caddy_data`, `econmind_caddy_config`,
 `econmind_redis_data`, `econmind_nats_data` Docker 볼륨을 이어 사용합니다.
 외부 공개 포트는 80/443이며, 점검용 프론트 포트 8080은 서버의 127.0.0.1에만 연결됩니다.
 
-### 작업 브랜치의 실제 뉴스 설정
+### 서버의 실제 뉴스 설정
 
 **GDELT의 반복적인 HTTP 429 오류 때문에 기본 공급원을 NCP NAVER API HUB로 변경했다. 해외 뉴스는 검토 예정이다.**
 프론트 검색은 20건 중 NAVER 뉴스 URL·분류 조건을 통과한 기사만 보여준다. 정치·사회와 분류 확인 실패는 제외한다. 상세는 description만 표시하고 **리포트 보기에서만 선택 기사 1건의 NAVER URL에 Diffbot을 호출**한다. 이미지의 QR 코드 후보는 제거한다. 메타데이터는 Gemini 3.5 Flash-Lite / Flex로 추출하며 규칙 fallback을 갖는다.
@@ -42,9 +95,9 @@
 
 서버 Compose는 `NEWS_PROVIDER=naver`, `DEMO_MODE=false`, `USE_MOCK_NEWS=false`, `USE_MONGODB=true`, `MONGODB_REQUIRED=true`, `LLM_PROVIDER=gemini`, `GEMINI_MODEL=gemini-3.5-flash-lite`, `GEMINI_SERVICE_TIER=flex`를 API와 워커 모두에 전달한다. 키나 MongoDB URI가 빠지면 Compose 검증이 실패한다.
 
-2026-09-18 운영 기록상 GCP는 같은 VM의 MongoDB 컨테이너 대신 **기존 홈 서버 DB로 연결되는 SSH 역방향 터널**을 사용했다. 이 연결을 계속 사용할 경우 앱 URI의 호스트는 `host.docker.internal:27017`이고 `directConnection=true`가 필요하다. 이 PR은 API·워커에 host-gateway 매핑을 추가하지만 새 MongoDB나 터널을 만들지는 않는다. 배포 전에 서버의 실제 연결 상태를 다시 확인해야 한다.
+2026-09-18 운영 기록상 GCP는 같은 VM의 MongoDB 컨테이너 대신 **기존 홈 서버 DB로 연결되는 SSH 역방향 터널**을 사용했다. 이 연결을 계속 사용할 경우 앱 URI의 호스트는 `host.docker.internal:27017`이고 `directConnection=true`가 필요하다. 서버 Compose는 API·워커에 host-gateway 매핑을 제공하지만 새 MongoDB나 터널을 만들지는 않는다. 배포 전에 서버의 실제 연결 상태를 다시 확인해야 한다.
 
-이전 서버의 미추적 파일 `compose.server.mongo.yaml`은 보존·백업하되 이 PR의 배포에는 합치지 않는다. 그 파일의 연결·호스트 매핑 역할을 브랜치의 `compose.server.yaml`이 수행하도록 구성했다. `/ready`는 실제 DB ping을 검사하며 실패하면 503, 컨테이너는 unhealthy가 된다. 필수 저장 실패도 API에서 503으로 반환한다.
+이전 서버의 미추적 파일 `compose.server.mongo.yaml`은 보존·백업하되 아래 배포 절차에는 합치지 않는다. 그 파일의 연결·호스트 매핑 역할을 `compose.server.yaml`이 수행하도록 구성했다. `/ready`는 실제 DB ping을 검사하며 실패하면 503, 컨테이너는 unhealthy가 된다. 필수 저장 실패도 API에서 503으로 반환한다.
 
 Flex 생성은 호출당 최대 600초, 메타데이터 배치 전체는 660초, 임베딩은 30초로 제한한다. Nginx 프록시는 리포트 생성+검증을 고려해 1500초까지 기다린다. 별도의 GDELT 백그라운드 수집기를 추가하지 않는다.
 
@@ -77,7 +130,7 @@ curl -fsS https://econmind.duckdns.org/ready
 > 자세한 내용은 `nginx.server.conf` 주석을 참고하세요.
 
 워커는 API와 같은 백엔드 이미지를 사용합니다. 빌드는 서버 자원을 고려해 순서대로 실행합니다.
-이 PR의 서버 Compose 설정은 병합·배포 시 실제 뉴스·LLM·MongoDB를 활성화합니다. 로컬 데모와 기존 k3s 매니페스트는 별도입니다.
+서버 Compose 설정은 실제 뉴스·LLM·MongoDB를 활성화합니다. 로컬 데모와 기존 k3s 매니페스트는 별도입니다.
 서버의 `.env`는 Git에서 제외되며, `APP_ORIGIN`은 기본값으로 위 HTTPS 주소를 사용합니다.
 자동배포는 설치하지 않습니다. GitHub push 후 위의 pull·빌드·실행 명령으로 배포합니다.
 
