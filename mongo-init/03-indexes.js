@@ -56,6 +56,8 @@ const INDEXES = {
     [{ report_type: 1 }, { name: 'idx_reports_report_type' }],
     [{ source_news_ids: 1 }, { name: 'idx_reports_source_news_ids' }],
     [{ created_at: -1 }, { name: 'idx_reports_created_at' }],
+    // 같은 근거·옵션 리포트 재사용 조회 (docs/10 § 3.5). 동시 완료 경합으로 저장이 실패하지 않게 unique 는 걸지 않는다.
+    [{ reuse_key: 1, is_fallback: 1 }, { name: 'idx_reports_reuse_key' }],
   ],
 
   strategies: [

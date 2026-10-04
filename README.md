@@ -375,15 +375,24 @@ docker compose up -d --force-recreate mongodb-tuner
 | 컬렉션 | `validationAction` | 이유 |
 |---|---|---|
 | `news` `news_analysis` `news_relations` `mindmaps` `jobs` `users` | `error` | 아무도 아직 쓰지 않는 신규 컬렉션이라 바로 강제해도 안전 |
-| `reports` `strategies` | `warn` | 현재 백엔드가 설계와 다른 형태로 쓴다. `error` 로 두면 `save_report`/`save_strategy` 가 조용히 실패한다 |
+| `reports` | `warn` → 변환 후 `error` | 2026-10-04 앱 결과 형태(`schema_version 2`: `sections`·`evidence`·`source_news_ids`·`is_fallback`·`reuse_key`)로 계약을 바꿨다(econmind-docs `docs/10` § 5.1). 백엔드는 두 리포트 경로 모두 이 형태로 저장한다 |
+| `strategies` | `warn` | 앱은 추천 목록, 설계는 백테스트 구조(M6 범위). 승격하지 않는다 |
 
-백엔드 정합화가 끝나면 승격한다:
+`reports` 승격 순서 — 기존 DB 에는 새 validator 와 인덱스가 자동으로 들어가지 않으므로 먼저 다시 적용한다. 모두 여러 번 실행해도 결과가 같다:
 
 ```bash
-docker compose exec -T -e HOME=/tmp mongodb sh -c \
-  'mongosh "mongodb://$MONGODB_INITDB_ROOT_USERNAME:$MONGODB_INITDB_ROOT_PASSWORD@localhost:27017/?authSource=admin" \
-     --quiet --file /scripts/strict-validation.js'
+MONGOSH='mongosh "mongodb://$MONGODB_INITDB_ROOT_USERNAME:$MONGODB_INITDB_ROOT_PASSWORD@localhost:27017/?authSource=admin" --quiet'
+# 0) 백업: reports 를 mongodump 로 남긴다 (아래「영속화 / 백업」)
+# 1) validator(collMod)·인덱스(idx_reports_reuse_key) 재적용
+docker compose exec -T -e HOME=/tmp mongodb sh -c "$MONGOSH --file /docker-entrypoint-initdb.d/02-collections.js"
+docker compose exec -T -e HOME=/tmp mongodb sh -c "$MONGOSH --file /docker-entrypoint-initdb.d/03-indexes.js"
+# 2) 기존 평탄 문서 → schema_version 2 (MIGRATE_DRY_RUN=1 로 대상 수만 먼저 확인 가능)
+docker compose exec -T -e HOME=/tmp mongodb sh -c "$MONGOSH --file /scripts/migrate-reports-v2.js"
+# 3) "validator 위반 0건" 을 확인한 뒤 reports 만 error 로 승격
+docker compose exec -T -e HOME=/tmp mongodb sh -c "$MONGOSH --file /scripts/strict-validation.js"
 ```
+
+2026-10-04 로컬 `mongo:8.0` 컨테이너에서 01~03 초기화 → 옛 평탄 문서 1건 + 새 백엔드 문서 저장 → 변환(dry run·실행·재실행) → 승격 → 두 리포트 경로 저장·조회·재사용과 평탄 문서 거부(code 121)를 확인했다. 벡터 인덱스(04, atlas-local 전용)와 운영 DB 는 이 검증에 포함하지 않았다.
 
 > 명령이 컨테이너 **안의** 환경변수를 쓴다 — 호스트 셸에 비밀번호를 꺼내지 않는다.
 > (`$MONGODB_INITDB_ROOT_*` 는 mongodb 컨테이너에 이미 들어 있다. 홑따옴표를 유지할 것)
