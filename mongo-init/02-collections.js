@@ -16,10 +16,11 @@
 //      'error' → news, news_analysis, news_relations, mindmaps, jobs, users
 //                (지금 아무도 쓰지 않는 신규 컬렉션이므로 바로 강제해도 안전)
 //      'warn'  → reports, strategies
-//                reports    : 2026-10-04 앱 결과 형태(schema_version 2)로 계약을 바꿨다.
-//                             기존 문서를 scripts/migrate-reports-v2.js 로 변환한 뒤 승격한다.
-//                strategies : 앱은 {strategy_id, expected_return, risk, period, ...},
-//                             설계는 {logic, parameters, backtest, status, ...} — 백테스트는 M6 범위.
+//                현재 백엔드가 설계와 다른 형태로 쓰고 있다.
+//                  reports    : {report_id, summary, event_analysis, market_impact, ...}
+//                  strategies : {strategy_id, expected_return, risk, period, ...}
+//                  설계        : {topic, report_type, sections{7개}, scores, ...}
+//                                {logic, parameters, backtest, status, ...}
 //                여기에 지금 'error' 를 걸면 app/database.py 의 save_report/
 //                save_strategy 가 조용히 실패한다(예외를 잡아 skip 로그만 남김).
 //                → 백엔드 정합화(작업범위 3)가 끝난 뒤 scripts/strict-validation.js
@@ -262,73 +263,51 @@ const SCHEMAS = {
     },
   },
 
-  // 5. reports — AI 리포트 (schema_version 2, econmind-docs docs/10 § 5.1)
-  //    설계 7섹션은 앱이 한 번도 쓰지 않았다. 앱의 실제 결과 형태로 계약을 바꾼다.
-  //    ⚠ validationAction: 'warn' — 기존 문서를 scripts/migrate-reports-v2.js 로 변환한 뒤
-  //      scripts/strict-validation.js 로 'error' 승격 (README「MongoDB」절).
+  // 5. reports — AI 리포트
+  //    ⚠ validationAction: 'warn' (파일 상단 '엄격도 정책' 참고)
   reports: {
     action: 'warn',
     schema: {
       bsonType: 'object',
-      required: ['report_id', 'schema_version', 'title', 'report_type', 'source_news_ids', 'evidence',
-                 'sections', 'is_fallback', 'created_by', 'created_at', 'updated_at'],
+      required: ['title', 'report_type', 'sections', 'created_by', 'created_at', 'updated_at'],
       properties: {
-        report_id: STR,
-        schema_version: { enum: [2] },
         title: STR,
         topic: STR,
-        // 앱 입력값(investment)과 설계 값(*_report)을 모두 허용한다
-        report_type: { enum: ['investment', 'investment_report', 'issue_report', 'market_report'] },
-        language: STR,
+        report_type: { enum: ['investment_report', 'issue_report', 'market_report'] },
         source_news_ids: REF_ARR,
-        evidence: {
-          bsonType: 'array',
-          items: {
-            bsonType: 'object',
-            required: ['news_id', 'title'],
-            properties: {
-              news_id: REF, title: STR, source_name: STR, source_url: STR, published_at: STR,
-              body_status: { enum: ['extracted', 'cached', 'description_only'] },
-              content_hash: STR,
-            },
-          },
-        },
+        related_tickers: TICKER_ARR,
         sections: {
           bsonType: 'object',
-          required: ['summary', 'event_analysis', 'market_impact', 'risk_factors'],
           properties: {
-            summary: STR, event_analysis: STR, market_impact: STR, risk_factors: STR_ARR,
+            summary: STR,
+            key_events: STR_ARR,
+            scenario_analysis: STR,
+            industry_analysis: STR,
+            company_analysis: STR,
+            risk_analysis: STR,
+            conclusion: STR,
           },
         },
-        related_stocks: STR_ARR,
-        stock_impacts: {
-          bsonType: 'array',
-          items: {
-            bsonType: 'object',
-            required: ['name', 'direction', 'action'],
-            additionalProperties: false,
-            properties: {
-              name: STR, ticker: STR, comment: STR,
-              direction: { enum: ['up', 'down', 'mixed'] },
-              action: { enum: ['buy', 'hold', 'sell', 'watch'] },
-            },
-          },
+        scores: {
+          bsonType: 'object',
+          properties: { importance: NUM, market_impact: NUM, confidence: NUM },
         },
-        strategy: {
-          bsonType: ['object', 'null'],
-          properties: { stance: STR, rationale: STR, watchlist: STR_ARR, risk_warning: STR },
-        },
-        is_fallback: { bsonType: 'bool' },
-        reuse_key: STR,
         model_info: {
           bsonType: 'object',
           properties: { provider: STR, model: STR, prompt_version: STR },
         },
-        verification: { bsonType: ['object', 'null'] },
-        rag_sources: STR_ARR,
+        reuse: {
+          bsonType: 'object',
+          properties: { view_count: NUM, used_count: NUM },
+        },
         created_by: { enum: ['system', 'user'] },
         created_at: DATE,
         updated_at: DATE,
+
+        // 앱 고유: 응답 스키마(schemas.py)·프론트가 쓰는 값들
+        report_id: STR,
+        verification: { bsonType: 'object' },
+        rag_sources: STR_ARR,
       },
     },
   },
