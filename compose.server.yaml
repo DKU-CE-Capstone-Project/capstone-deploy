@@ -59,6 +59,10 @@ x-backend-env: &backend-env
   USE_RAG: ${USE_RAG:-true}
   USE_CRITIC: ${USE_CRITIC:-true}
   CORS_ORIGINS: ${APP_ORIGIN:-https://econmind.duckdns.org}
+  SESSION_STORE_REQUIRED: "true"
+  SESSION_COOKIE_SECURE: "true"
+  SESSION_COOKIE_SAMESITE: lax
+  PAID_DEMO_ENABLED: "false"
 
 services:
   caddy:
@@ -122,7 +126,7 @@ services:
         - CMD
         - python
         - -c
-        - "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=5)); assert d.get('status')=='ok' and d.get('mongodb')=='on'"
+        - "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=5)); assert d.get('status')=='ok' and d.get('mongodb')=='on' and d.get('redis')=='on'"
       interval: 30s
       timeout: 10s
       retries: 3

@@ -37,3 +37,6 @@ jobs:
 
       - name: Validate Compose configuration
         run: python3 scripts/check-news-map-settings.py
+
+      - name: Validate server security settings
+        run: docker compose -f compose.server.yaml config --format json | python3 scripts/check-server-security.py
