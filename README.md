@@ -2,6 +2,12 @@
 
 > 이 저장소는 **배포·인프라 런북**이다. 프로젝트 진행 현황·향후 계획·발표 자료는 [DKU-CE-Capstone-Project/econmind-docs](https://github.com/DKU-CE-Capstone-Project/econmind-docs)에 있다.
 
+## 운영 보안 설정 (2026-10-10)
+
+서버 Compose는 백엔드의 세션 저장소를 필수(`SESSION_STORE_REQUIRED=true`)로 설정한다. Redis 연결이 끊기면 세션·리포트·전략·작업 결과 API와 `/ready`가 503을 반환해 인증 성격의 상태가 프로세스 메모리로 갈라지지 않는다. HTTPS 쿠키는 `Secure`와 `SameSite=lax`로 발급한다. 실제 구독 권한 검증이 구현되기 전까지 `PAID_DEMO_ENABLED=false`로 유료 시연 경로를 차단한다. 세 값은 서버 Compose에서 명시적으로 고정했다.
+
+리포트·전략·작업 결과는 생성한 브라우저 세션에서만 조회할 수 있다. 세션이 만료되거나 초기화되면 기존 결과는 조회할 수 없고, 기존 소유자 정보가 없는 결과도 API에서 조회할 수 없다. 작업 제출은 세션당 시간당 10건·전체 200건, 리포트 생성은 5건·전체 100건, 전략 생성은 10건·전체 200건으로 제한된다. 서버에 실제 Redis가 필요하며, 새 백엔드·프론트·Compose 커밋을 함께 배포한 뒤 `/ready`의 `mongodb`와 `redis`가 모두 `on`인지 확인한다. 이 저장소 변경 자체는 운영 서버 배포를 의미하지 않는다.
+
 **적용 범위 (2026-10-02):** 기존 로컬 `article-api/908e328`에서 작업했고 이번 시작 시 변경이 없었다. 현재 뉴스맵 설정 제거와 로컬 검증 결과/실제 코드 커밋은 정본 `docs/99-verification.md`의 2026-10-02 기록을 따른다. 원격 반영·운영 서버 접속·재시작·배포는 수행하지 않았다. 아래 2026-10-01 실측과 GCP·k3s 기록은 각 기준일의 기록이다.
 
 ## 뉴스맵 대표 기사 설정 전달 (2026-10-02)
@@ -97,7 +103,7 @@ python3 scripts/check-news-map-settings.py --backend-root ../capstone-backend
 
 2026-09-18 운영 기록상 GCP는 같은 VM의 MongoDB 컨테이너 대신 **기존 홈 서버 DB로 연결되는 SSH 역방향 터널**을 사용했다. 이 연결을 계속 사용할 경우 앱 URI의 호스트는 `host.docker.internal:27017`이고 `directConnection=true`가 필요하다. 서버 Compose는 API·워커에 host-gateway 매핑을 제공하지만 새 MongoDB나 터널을 만들지는 않는다. 배포 전에 서버의 실제 연결 상태를 다시 확인해야 한다.
 
-이전 서버의 미추적 파일 `compose.server.mongo.yaml`은 보존·백업하되 아래 배포 절차에는 합치지 않는다. 그 파일의 연결·호스트 매핑 역할을 `compose.server.yaml`이 수행하도록 구성했다. `/ready`는 실제 DB ping을 검사하며 실패하면 503, 컨테이너는 unhealthy가 된다. 필수 저장 실패도 API에서 503으로 반환한다.
+이전 서버의 미추적 파일 `compose.server.mongo.yaml`은 보존·백업하되 아래 배포 절차에는 합치지 않는다. 그 파일의 연결·호스트 매핑 역할을 `compose.server.yaml`이 수행하도록 구성했다. `/ready`는 DB와 Redis를 검사하며 실패하면 503, 컨테이너는 unhealthy가 된다. 필수 저장 실패도 API에서 503으로 반환한다.
 
 Flex 생성은 호출당 최대 600초, 메타데이터 배치 전체는 660초, 임베딩은 30초로 제한한다. Nginx 프록시는 리포트 생성+검증을 고려해 1500초까지 기다린다. 별도의 GDELT 백그라운드 수집기를 추가하지 않는다.
 
