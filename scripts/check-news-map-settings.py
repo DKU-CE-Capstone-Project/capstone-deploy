@@ -13,6 +13,14 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 OVERRIDES = {
+    "NEWS_MAP_CLIENT_HOURLY_LIMIT": "15",
+    "NEWS_MAP_GLOBAL_HOURLY_LIMIT": "150",
+    "NEWS_MAP_SELECTOR": "decision",
+    "NEWS_MAP_DECISION_TIMEOUT_SECONDS": "15",
+    "NEWS_MAP_DECISION_TOTAL_TIMEOUT_SECONDS": "60",
+    "NEWS_MAP_DECISION_CONCURRENCY": "2",
+    "NEWS_MAP_DECISION_MAX_CALLS": "80",
+    "NEWS_MAP_DECISION_CACHE_TTL_SECONDS": "120",
     "NEWS_MAP_EMBEDDING_MODEL": "fixture-model",
     "NEWS_MAP_EMBEDDING_DIMENSIONS": "128",
     "NEWS_MAP_EMBEDDING_TASK_TYPE": "CLUSTERING",
@@ -68,7 +76,7 @@ def main():
         "MONGODB_ROOT_PASSWORD": "fixture-root-password", "MONGODB_APP_USERNAME": "fixture-app",
         "MONGODB_APP_PASSWORD": "fixture-app-password", "NAVER_CLIENT_ID": "fixture-id",
         "NAVER_CLIENT_SECRET": "fixture-secret", "DIFFBOT_TOKEN": "fixture-diffbot",
-        "GOOGLE_API_KEY": "fixture-google", "ANTHROPIC_API_KEY": "", "NEWSAPI_KEY": "",
+        "GOOGLE_API_KEY": "fixture-google", "OPENAI_API_KEY": "fixture-openai", "ANTHROPIC_API_KEY": "", "NEWSAPI_KEY": "",
         "APP_ORIGIN": "https://example.invalid",
     })
     combinations = [
@@ -88,6 +96,7 @@ def main():
             for service in ("econmind-api", "econmind-worker"):
                 actual = config["services"][service]["environment"]
                 assert {key for key in actual if key.startswith("NEWS_MAP_")} == expected.keys(), "Unexpected map setting"
+                assert actual.get("OPENAI_API_KEY") == "fixture-openai", "OpenAI key must reach API/worker"
                 for key, value in expected.items():
                     assert str(actual.get(key)) == value, f"{' + '.join(files)} {label} {service} {key}"
             subprocess.run([sys.executable, str(ROOT / "scripts/check-compose-ports.py")],
