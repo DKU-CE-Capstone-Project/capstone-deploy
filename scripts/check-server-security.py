@@ -13,6 +13,13 @@ def main() -> None:
     args = parser.parse_args()
     compose = json.load(sys.stdin)
     services = compose["services"]
+    auth_keys = ("ECONMIND_TEAM_USER", "ECONMIND_TEAM_PASSWORD_HASH")
+    for key in auth_keys:
+        assert services["caddy"]["environment"].get(key), f"Caddy requires {key}"
+    for name, service in services.items():
+        if name != "caddy":
+            assert not set(auth_keys).intersection(service.get("environment", {})), f"{name}: team credentials must stay in Caddy"
+            assert not service.get("ports"), f"{name}: direct host ports would bypass Caddy authentication"
     expected = {
         "SESSION_STORE_REQUIRED": "true",
         "V2_STATE_MEMORY": "false",
@@ -50,13 +57,16 @@ def main() -> None:
     caddyfile = Path("Caddyfile").read_text()
     nginx = Path("nginx.server.conf").read_text()
     assert "header_up X-Forwarded-For {http.request.remote.host}" in caddyfile
+    assert "basic_auth {" in caddyfile
+    assert "{$ECONMIND_TEAM_USER} {$ECONMIND_TEAM_PASSWORD_HASH}" in caddyfile
+    assert "header_up -Authorization" in caddyfile
     assert f"set_real_ip_from {caddy_ip};" in nginx
     assert "real_ip_header X-Forwarded-For;" in nginx
     assert f"{caddy_ip} $http_x_forwarded_proto;" in nginx
     assert "default $scheme;" in nginx
     assert "proxy_set_header X-Forwarded-For $remote_addr;" in nginx
     assert "$proxy_add_x_forwarded_for" not in nginx
-    print("Server session, cookie, PAID gate, Redis readiness, and proxy trust: OK")
+    print("Server team authentication, session, cookie, PAID gate, Redis readiness, and proxy trust: OK")
 
 
 if __name__ == "__main__":

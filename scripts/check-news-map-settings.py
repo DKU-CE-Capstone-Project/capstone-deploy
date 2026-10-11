@@ -78,6 +78,7 @@ def main():
         "NAVER_CLIENT_SECRET": "fixture-secret", "DIFFBOT_TOKEN": "fixture-diffbot",
         "GOOGLE_API_KEY": "fixture-google", "ANTHROPIC_API_KEY": "", "NEWSAPI_KEY": "",
         "APP_ORIGIN": "https://example.invalid",
+        "ECONMIND_TEAM_USER": "fixture-team", "ECONMIND_TEAM_PASSWORD_HASH": "fixture-hash",
     })
     combinations = [
         ["compose.server.yaml"], ["docker-compose.yaml"],
