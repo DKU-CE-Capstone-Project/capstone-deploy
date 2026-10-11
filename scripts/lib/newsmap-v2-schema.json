@@ -1,0 +1,969 @@
+{
+  "validators": {
+    "news_bodies": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "schema_version",
+          "body_id",
+          "news_id",
+          "source_url",
+          "content",
+          "content_hash",
+          "extractor_provider",
+          "extractor_version",
+          "extracted_at",
+          "created_at"
+        ],
+        "properties": {
+          "schema_version": {
+            "bsonType": "int",
+            "enum": [
+              2
+            ]
+          },
+          "body_id": {
+            "bsonType": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "news_id": {
+            "bsonType": "string",
+            "minLength": 1
+          },
+          "source_url": {
+            "bsonType": "string",
+            "minLength": 1
+          },
+          "content": {
+            "bsonType": "string",
+            "minLength": 1
+          },
+          "content_hash": {
+            "bsonType": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "extractor_provider": {
+            "bsonType": "string",
+            "minLength": 1
+          },
+          "extractor_version": {
+            "bsonType": "string",
+            "minLength": 1
+          },
+          "extracted_at": {
+            "bsonType": "date"
+          },
+          "created_at": {
+            "bsonType": "date"
+          }
+        }
+      }
+    },
+    "reports": {
+      "$or": [
+        {
+          "$jsonSchema": {
+            "bsonType": "object",
+            "required": [
+              "schema_version",
+              "report_id",
+              "title",
+              "event_summary",
+              "event_analysis",
+              "market_impact",
+              "stock_impacts",
+              "risk_factors",
+              "requested_news_ids",
+              "used_evidence",
+              "failed_evidence",
+              "coverage",
+              "rag_evidence",
+              "verification",
+              "generation_key",
+              "reuse_eligible",
+              "generation",
+              "created_at",
+              "updated_at"
+            ],
+            "properties": {
+              "schema_version": {
+                "bsonType": "int",
+                "enum": [
+                  2
+                ]
+              },
+              "report_id": {
+                "bsonType": "string",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              "title": {
+                "bsonType": "string"
+              },
+              "event_summary": {
+                "bsonType": "string"
+              },
+              "event_analysis": {
+                "bsonType": "string"
+              },
+              "market_impact": {
+                "bsonType": "string"
+              },
+              "stock_impacts": {
+                "bsonType": "array",
+                "items": {
+                  "bsonType": "object",
+                  "required": [
+                    "ticker",
+                    "name",
+                    "impact",
+                    "direction",
+                    "evidence_news_ids"
+                  ],
+                  "properties": {
+                    "ticker": {
+                      "bsonType": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "name": {
+                      "bsonType": "string"
+                    },
+                    "impact": {
+                      "bsonType": "string",
+                      "minLength": 1
+                    },
+                    "direction": {
+                      "enum": [
+                        "up",
+                        "down",
+                        "mixed",
+                        "unknown"
+                      ]
+                    },
+                    "evidence_news_ids": {
+                      "bsonType": "array",
+                      "items": {
+                        "bsonType": "string",
+                        "minLength": 1
+                      },
+                      "minItems": 0,
+                      "maxItems": 10,
+                      "uniqueItems": true
+                    }
+                  }
+                }
+              },
+              "risk_factors": {
+                "bsonType": "array",
+                "items": {
+                  "bsonType": "string"
+                }
+              },
+              "requested_news_ids": {
+                "bsonType": "array",
+                "items": {
+                  "bsonType": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "maxItems": 10,
+                "uniqueItems": true
+              },
+              "used_evidence": {
+                "bsonType": "array",
+                "items": {
+                  "bsonType": "object",
+                  "required": [
+                    "news_id",
+                    "title",
+                    "source_name",
+                    "source_url",
+                    "published_at",
+                    "body_id",
+                    "content_hash",
+                    "input_char_count",
+                    "truncated",
+                    "input_excerpt"
+                  ],
+                  "properties": {
+                    "news_id": {
+                      "bsonType": "string",
+                      "minLength": 1
+                    },
+                    "title": {
+                      "bsonType": "string"
+                    },
+                    "source_name": {
+                      "bsonType": "string"
+                    },
+                    "source_url": {
+                      "bsonType": "string",
+                      "minLength": 1
+                    },
+                    "published_at": {
+                      "bsonType": [
+                        "date",
+                        "null"
+                      ]
+                    },
+                    "body_id": {
+                      "bsonType": "string",
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                    },
+                    "content_hash": {
+                      "bsonType": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "input_char_count": {
+                      "bsonType": [
+                        "int",
+                        "long"
+                      ],
+                      "minimum": 1,
+                      "maximum": 12000
+                    },
+                    "truncated": {
+                      "bsonType": "bool"
+                    },
+                    "input_excerpt": {
+                      "bsonType": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "minItems": 1,
+                "maxItems": 10
+              },
+              "failed_evidence": {
+                "bsonType": "array",
+                "items": {
+                  "bsonType": "object",
+                  "required": [
+                    "news_id",
+                    "code",
+                    "message",
+                    "retryable"
+                  ],
+                  "properties": {
+                    "news_id": {
+                      "bsonType": "string",
+                      "minLength": 1
+                    },
+                    "code": {
+                      "enum": [
+                        "BODY_EMPTY",
+                        "EXTRACTION_FAILED",
+                        "EXTRACTION_TIMEOUT",
+                        "ARTICLE_UNAVAILABLE",
+                        "ARTICLE_NOT_ALLOWED"
+                      ]
+                    },
+                    "message": {
+                      "bsonType": "string"
+                    },
+                    "retryable": {
+                      "bsonType": "bool"
+                    }
+                  }
+                },
+                "minItems": 0,
+                "maxItems": 9
+              },
+              "coverage": {
+                "bsonType": "object",
+                "required": [
+                  "requested_count",
+                  "used_count",
+                  "failed_count"
+                ],
+                "properties": {
+                  "requested_count": {
+                    "bsonType": [
+                      "int",
+                      "long"
+                    ],
+                    "minimum": 1,
+                    "maximum": 10
+                  },
+                  "used_count": {
+                    "bsonType": [
+                      "int",
+                      "long"
+                    ],
+                    "minimum": 1,
+                    "maximum": 10
+                  },
+                  "failed_count": {
+                    "bsonType": [
+                      "int",
+                      "long"
+                    ],
+                    "minimum": 0,
+                    "maximum": 9
+                  }
+                }
+              },
+              "rag_evidence": {
+                "bsonType": "array",
+                "items": {
+                  "bsonType": "object",
+                  "required": [
+                    "news_id",
+                    "title",
+                    "source_url",
+                    "description",
+                    "description_hash"
+                  ],
+                  "properties": {
+                    "news_id": {
+                      "bsonType": "string",
+                      "minLength": 1
+                    },
+                    "title": {
+                      "bsonType": "string"
+                    },
+                    "source_url": {
+                      "bsonType": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "description": {
+                      "bsonType": "string"
+                    },
+                    "description_hash": {
+                      "bsonType": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    }
+                  }
+                },
+                "minItems": 0,
+                "maxItems": 3
+              },
+              "verification": {
+                "bsonType": "object",
+                "required": [
+                  "status",
+                  "notes"
+                ],
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "passed",
+                      "warning",
+                      "unavailable"
+                    ]
+                  },
+                  "notes": {
+                    "bsonType": "array",
+                    "items": {
+                      "bsonType": "string"
+                    }
+                  }
+                }
+              },
+              "generation_key": {
+                "bsonType": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "reuse_eligible": {
+                "bsonType": "bool"
+              },
+              "generation": {
+                "bsonType": "object",
+                "required": [
+                  "language",
+                  "report_type",
+                  "model",
+                  "prompt_version",
+                  "preprocessing_version",
+                  "rag_version",
+                  "input_budget_version"
+                ],
+                "properties": {
+                  "language": {
+                    "enum": [
+                      "ko"
+                    ]
+                  },
+                  "report_type": {
+                    "enum": [
+                      "investment"
+                    ]
+                  },
+                  "model": {
+                    "bsonType": "object",
+                    "required": [
+                      "provider",
+                      "name",
+                      "config_hash"
+                    ],
+                    "properties": {
+                      "provider": {
+                        "bsonType": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "bsonType": "string",
+                        "minLength": 1
+                      },
+                      "config_hash": {
+                        "bsonType": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    }
+                  },
+                  "prompt_version": {
+                    "bsonType": "string",
+                    "minLength": 1
+                  },
+                  "preprocessing_version": {
+                    "bsonType": "string",
+                    "minLength": 1
+                  },
+                  "rag_version": {
+                    "bsonType": "string",
+                    "minLength": 1
+                  },
+                  "input_budget_version": {
+                    "bsonType": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "created_at": {
+                "bsonType": "date"
+              },
+              "updated_at": {
+                "bsonType": "date"
+              }
+            }
+          }
+        },
+        {
+          "$and": [
+            {
+              "$or": [
+                {
+                  "schema_version": {
+                    "$exists": false
+                  }
+                },
+                {
+                  "schema_version": 1
+                }
+              ]
+            },
+            {
+              "$jsonSchema": {
+                "bsonType": "object",
+                "required": [
+                  "report_id",
+                  "title",
+                  "summary",
+                  "event_analysis",
+                  "market_impact",
+                  "related_stocks",
+                  "evidence_news",
+                  "risk_factors",
+                  "created_at"
+                ],
+                "properties": {
+                  "report_id": {
+                    "bsonType": "string",
+                    "minLength": 1
+                  },
+                  "title": {
+                    "bsonType": "string"
+                  },
+                  "summary": {
+                    "bsonType": "string"
+                  },
+                  "event_analysis": {
+                    "bsonType": "string"
+                  },
+                  "market_impact": {
+                    "bsonType": "string"
+                  },
+                  "related_stocks": {
+                    "bsonType": "array",
+                    "items": {
+                      "bsonType": "string"
+                    }
+                  },
+                  "evidence_news": {
+                    "bsonType": "array",
+                    "items": {
+                      "bsonType": "object",
+                      "required": [
+                        "news_id",
+                        "title"
+                      ],
+                      "properties": {
+                        "news_id": {
+                          "bsonType": "string",
+                          "minLength": 1
+                        },
+                        "title": {
+                          "bsonType": "string"
+                        }
+                      }
+                    }
+                  },
+                  "risk_factors": {
+                    "bsonType": "array",
+                    "items": {
+                      "bsonType": "string"
+                    }
+                  },
+                  "created_at": {
+                    "bsonType": [
+                      "date",
+                      "string"
+                    ]
+                  },
+                  "schema_version": {
+                    "bsonType": "int",
+                    "enum": [
+                      1
+                    ]
+                  },
+                  "updated_at": {
+                    "bsonType": [
+                      "date",
+                      "string"
+                    ]
+                  },
+                  "owner_sid": {
+                    "bsonType": "string",
+                    "minLength": 1
+                  },
+                  "rag_sources": {
+                    "bsonType": "array",
+                    "items": {
+                      "bsonType": "string"
+                    }
+                  },
+                  "verification": {
+                    "bsonType": [
+                      "object",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "strategies": {
+      "$or": [
+        {
+          "$jsonSchema": {
+            "bsonType": "object",
+            "required": [
+              "schema_version",
+              "strategy_id",
+              "report_id",
+              "report_generation_key",
+              "risk_level",
+              "period",
+              "strategy_summary",
+              "risk_warning",
+              "strategy_items",
+              "generation_key",
+              "generation",
+              "created_at",
+              "updated_at"
+            ],
+            "properties": {
+              "schema_version": {
+                "bsonType": "int",
+                "enum": [
+                  2
+                ]
+              },
+              "strategy_id": {
+                "bsonType": "string",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              "report_id": {
+                "bsonType": "string",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              "report_generation_key": {
+                "bsonType": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "risk_level": {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              "period": {
+                "enum": [
+                  "short",
+                  "mid",
+                  "long"
+                ]
+              },
+              "strategy_summary": {
+                "bsonType": "string"
+              },
+              "risk_warning": {
+                "bsonType": "string"
+              },
+              "strategy_items": {
+                "bsonType": "array",
+                "items": {
+                  "bsonType": "object",
+                  "required": [
+                    "ticker",
+                    "stock_name",
+                    "action",
+                    "reason"
+                  ],
+                  "properties": {
+                    "ticker": {
+                      "bsonType": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "stock_name": {
+                      "bsonType": "string"
+                    },
+                    "action": {
+                      "enum": [
+                        "buy",
+                        "hold",
+                        "sell",
+                        "watch"
+                      ]
+                    },
+                    "reason": {
+                      "bsonType": "string"
+                    }
+                  }
+                }
+              },
+              "generation_key": {
+                "bsonType": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "generation": {
+                "bsonType": "object",
+                "required": [
+                  "model",
+                  "prompt_version"
+                ],
+                "properties": {
+                  "model": {
+                    "bsonType": "object",
+                    "required": [
+                      "provider",
+                      "name",
+                      "config_hash"
+                    ],
+                    "properties": {
+                      "provider": {
+                        "bsonType": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "bsonType": "string",
+                        "minLength": 1
+                      },
+                      "config_hash": {
+                        "bsonType": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    }
+                  },
+                  "prompt_version": {
+                    "bsonType": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "created_at": {
+                "bsonType": "date"
+              },
+              "updated_at": {
+                "bsonType": "date"
+              }
+            }
+          }
+        },
+        {
+          "$and": [
+            {
+              "$or": [
+                {
+                  "schema_version": {
+                    "$exists": false
+                  }
+                },
+                {
+                  "schema_version": 1
+                }
+              ]
+            },
+            {
+              "$jsonSchema": {
+                "bsonType": "object",
+                "required": [
+                  "strategy_id",
+                  "expected_return",
+                  "risk",
+                  "period",
+                  "strategy_summary",
+                  "strategy_items",
+                  "created_at"
+                ],
+                "properties": {
+                  "strategy_id": {
+                    "bsonType": "string",
+                    "minLength": 1
+                  },
+                  "expected_return": {
+                    "bsonType": [
+                      "double",
+                      "int",
+                      "long",
+                      "decimal"
+                    ]
+                  },
+                  "risk": {
+                    "bsonType": "string"
+                  },
+                  "period": {
+                    "enum": [
+                      "short",
+                      "mid",
+                      "long"
+                    ]
+                  },
+                  "strategy_summary": {
+                    "bsonType": "string"
+                  },
+                  "strategy_items": {
+                    "bsonType": "array",
+                    "items": {
+                      "bsonType": "object",
+                      "required": [
+                        "ticker",
+                        "stock_name",
+                        "action",
+                        "reason"
+                      ],
+                      "properties": {
+                        "ticker": {
+                          "bsonType": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "stock_name": {
+                          "bsonType": "string"
+                        },
+                        "action": {
+                          "enum": [
+                            "buy",
+                            "hold",
+                            "sell",
+                            "watch"
+                          ]
+                        },
+                        "reason": {
+                          "bsonType": "string"
+                        }
+                      }
+                    }
+                  },
+                  "created_at": {
+                    "bsonType": [
+                      "date",
+                      "string"
+                    ]
+                  },
+                  "updated_at": {
+                    "bsonType": [
+                      "date",
+                      "string"
+                    ]
+                  },
+                  "owner_sid": {
+                    "bsonType": "string",
+                    "minLength": 1
+                  },
+                  "report_id": {
+                    "bsonType": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "schema_version": {
+                    "bsonType": "int",
+                    "enum": [
+                      1
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "body_ref": {
+    "bsonType": "object",
+    "required": [
+      "body_id",
+      "content_hash",
+      "source_url",
+      "extractor_version",
+      "extracted_at"
+    ],
+    "properties": {
+      "body_id": {
+        "bsonType": "string",
+        "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+      },
+      "content_hash": {
+        "bsonType": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      },
+      "source_url": {
+        "bsonType": "string",
+        "minLength": 1
+      },
+      "extractor_version": {
+        "bsonType": "string",
+        "minLength": 1
+      },
+      "extracted_at": {
+        "bsonType": "date"
+      }
+    }
+  },
+  "indexes": [
+    {
+      "collection": "news",
+      "key": {
+        "news_id": 1
+      },
+      "options": {
+        "name": "uniq_news_news_id",
+        "unique": true,
+        "sparse": true
+      }
+    },
+    {
+      "collection": "news",
+      "key": {
+        "url": 1
+      },
+      "options": {
+        "name": "uniq_news_url",
+        "unique": true
+      }
+    },
+    {
+      "collection": "news_bodies",
+      "key": {
+        "body_id": 1
+      },
+      "options": {
+        "name": "uniq_news_bodies_body_id",
+        "unique": true
+      }
+    },
+    {
+      "collection": "news_bodies",
+      "key": {
+        "news_id": 1,
+        "source_url": 1,
+        "extractor_version": 1,
+        "extracted_at": -1
+      },
+      "options": {
+        "name": "idx_news_bodies_latest"
+      }
+    },
+    {
+      "collection": "reports",
+      "key": {
+        "report_id": 1
+      },
+      "options": {
+        "name": "uniq_reports_report_id",
+        "unique": true,
+        "sparse": true
+      }
+    },
+    {
+      "collection": "reports",
+      "key": {
+        "generation_key": 1
+      },
+      "options": {
+        "name": "uniq_reports_v2_generation",
+        "unique": true,
+        "partialFilterExpression": {
+          "schema_version": 2,
+          "reuse_eligible": true
+        }
+      }
+    },
+    {
+      "collection": "reports",
+      "key": {
+        "requested_news_ids": 1,
+        "created_at": -1
+      },
+      "options": {
+        "name": "idx_reports_requested_created"
+      }
+    },
+    {
+      "collection": "strategies",
+      "key": {
+        "strategy_id": 1
+      },
+      "options": {
+        "name": "uniq_strategies_strategy_id",
+        "unique": true,
+        "sparse": true
+      }
+    },
+    {
+      "collection": "strategies",
+      "key": {
+        "generation_key": 1
+      },
+      "options": {
+        "name": "uniq_strategies_v2_generation",
+        "unique": true,
+        "partialFilterExpression": {
+          "schema_version": 2
+        }
+      }
+    },
+    {
+      "collection": "strategies",
+      "key": {
+        "report_id": 1,
+        "created_at": -1
+      },
+      "options": {
+        "name": "idx_strategies_report_created"
+      }
+    }
+  ]
+}

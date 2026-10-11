@@ -2,6 +2,40 @@
 
 > 이 저장소는 **배포·인프라 런북**이다. 프로젝트 진행 현황·향후 계획·발표 자료는 [DKU-CE-Capstone-Project/econmind-docs](https://github.com/DKU-CE-Capstone-Project/econmind-docs)에 있다.
 
+## 뉴스맵 API v2 · 로컬 DB 검증 (2026-10-11)
+
+설계 정본 `econmind-docs/docs/10-newsmap-prototype-api-design.md`와 `docs/11-newsmap-prototype-db-design.md`(2026-10-04)에 맞춰 `news.body_ref`, 별도 `news_bodies`, v2 리포트·전략 DTO와 부분 유니크 재사용 인덱스를 추가했다. 신규 DB는 `mongo-init/05-newsmap-v2.js`가 strict/error 규칙을 적용한다. 기존 DB는 init 파일 변경만으로 갱신되지 않으므로 아래 dry-run 절차를 사용한다. 무버전/1 결과는 실제 v1 필수 필드·자료형을 검사하는 호환 분기로 유지한다. 과거 프로토타입의 서로 다른 `schema_version=2` 형식은 자동 변환하지 않고 불일치로 중단한다.
+
+새 본문·결과 시각은 BSON Date이며, 레거시의 문자열 시각은 호환 분기에만 허용한다. provenance가 없는 기존 `news.content`는 새 본문으로 승격하지 않는다. 본문은 서비스에서 삽입만 하고 카드 갱신으로 지우거나 덮어쓰지 않는다. MongoDB validator 자체는 이전 문서와 비교하는 불변성 검사나 교차 참조를 강제하지 않으므로 백엔드 저장 경로의 검증도 함께 필요하다. 본문·리포트·전략에 TTL 인덱스는 없다.
+
+API·두 워커 모두 Decision 설정(`NEWS_MAP_SELECTOR=embedding` 기본값)과 v2 설정을 전달한다. `decision`은 명시적으로 선택할 때만 활성화한다. `OPENAI_API_KEY`는 백엔드 환경에만 전달한다. 공유 v2 상태는 Redis를 사용하며 Compose에서 `V2_STATE_MEMORY=false`를 고정했다. 서버의 필수 Redis, Secure/SameSite 쿠키, PAID 차단, 연결 IP 제한, 신뢰 프록시 주소는 유지한다. 로컬 기본 워커도 API와 같은 MongoDB를 사용한다. `econmind-worker`는 기존 v1 큐, `econmind-v2-worker`는 별도 `reports.generate.v2` 큐를 처리한다. 기본/서버 Compose는 두 워커를 함께 기동하며 v1 burst 오버레이에서는 v2 워커가 `v2` 프로파일로 분리된다.
+
+로컬 검증은 기존 `.env`와 운영 계정·볼륨을 읽지 않는 별도 Compose를 쓴다. `econmind-v2-local-test` 프로젝트의 MongoDB(27218), Redis(6388), NATS(4233/8233)는 **127.0.0.1**에만 열린다. 공개하지 않는 합성 데이터용 DB이며 인증을 요구하지 않는다. MongoDB 8.0.32 이미지의 digest를 고정했으며 Atlas 벡터 검색은 검증 범위에 포함하지 않는다. 외부 뉴스·LLM 호출은 fixture/mock으로 대체하고 로컬 통합에서 `USE_RAG=false`로 실행한다.
+
+```bash
+docker compose --env-file /dev/null -f compose.local-test.yaml up -d --wait
+export MONGODB_URI=mongodb://127.0.0.1:27218
+export MONGODB_DB_NAME=econmind_v2_local_test
+export REDIS_URL=redis://127.0.0.1:6388/0
+export NATS_URL=nats://127.0.0.1:4233
+export BACKEND_ROOT=../capstone-backend
+"$BACKEND_ROOT/.venv/bin/python" -m unittest discover -s tests -v
+python3 scripts/check-news-map-settings.py --backend-root "$BACKEND_ROOT"
+python3 scripts/check-v2-settings.py --backend-root "$BACKEND_ROOT"
+```
+
+`tests/test_newsmap_v2_migration.py`는 알려진 v1·v2 합성 결과를 임의의 `test_*` DB에 넣어 정상/잘못된 쓰기, BSON Date, 1~10건 경계, 본문·본문 참조, 부분 유니크 캐시, 중복·인덱스 옵션 충돌, 롤백을 확인한다. 테스트가 만든 DB만 정리하며 개발 중인 기본 `econmind_v2_local_test`는 유지한다.
+
+메타데이터 마이그레이션은 loopback URI와 별도 `*_local_test`/`test_*` DB만 받는다. dry-run은 읽기 전용이며 문서별 부적합과 유니크 중복·인덱스 옵션 충돌이 하나라도 있으면 apply가 중단된다. apply/rollback은 문서를 변환·삭제하지 않으며 JSON 메타데이터 사본을 권한 0600으로 보존한다. 이미 존재하는 인덱스는 유지하고 새로 만든 인덱스만 롤백한다. 새 컬렉션도 삭제하지 않는다. 실제 데이터 전환 전에는 별도의 `mongodump`와 쓰기 중지가 필요하며 원격 적용은 이번 작업 범위에 포함하지 않는다.
+
+```bash
+"$BACKEND_ROOT/.venv/bin/python" scripts/migrate-newsmap-v2.py dry-run
+"$BACKEND_ROOT/.venv/bin/python" scripts/migrate-newsmap-v2.py apply --snapshot .local/v2-before.json
+"$BACKEND_ROOT/.venv/bin/python" scripts/migrate-newsmap-v2.py rollback --snapshot .local/v2-before.json
+```
+
+로컬 서비스를 멈출 때는 `docker compose --env-file /dev/null -f compose.local-test.yaml down`을 사용한다. 별도 named volume은 다음 실행에서도 유지된다. 실제 deploy `.env`는 변경하지 않는다.
+
 ## 운영 보안 설정 (2026-10-10)
 
 서버 Compose는 백엔드의 세션 저장소를 필수(`SESSION_STORE_REQUIRED=true`)로 설정한다. Redis 연결이 끊기면 세션·리포트·전략·작업 결과 API와 `/ready`가 503을 반환해 인증 성격의 상태가 프로세스 메모리로 갈라지지 않는다. HTTPS 쿠키는 `Secure`와 `SameSite=lax`로 발급한다. 실제 구독 권한 검증이 구현되기 전까지 `PAID_DEMO_ENABLED=false`로 유료 시연 경로를 차단한다. 세 값은 서버 Compose에서 명시적으로 고정했다.
