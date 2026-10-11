@@ -63,6 +63,12 @@ x-backend-env: &backend-env
   SESSION_COOKIE_SECURE: "true"
   SESSION_COOKIE_SAMESITE: lax
   PAID_DEMO_ENABLED: "false"
+  SESSION_ISSUE_CLIENT_HOURLY_LIMIT: ${SESSION_ISSUE_CLIENT_HOURLY_LIMIT:-30}
+  SESSION_ISSUE_GLOBAL_HOURLY_LIMIT: ${SESSION_ISSUE_GLOBAL_HOURLY_LIMIT:-600}
+  JOBS_CLIENT_HOURLY_LIMIT: ${JOBS_CLIENT_HOURLY_LIMIT:-20}
+  REPORTS_CLIENT_HOURLY_LIMIT: ${REPORTS_CLIENT_HOURLY_LIMIT:-10}
+  STRATEGIES_CLIENT_HOURLY_LIMIT: ${STRATEGIES_CLIENT_HOURLY_LIMIT:-20}
+  ANALYZE_CLIENT_HOURLY_LIMIT: ${ANALYZE_CLIENT_HOURLY_LIMIT:-20}
 
 services:
   caddy:
@@ -80,6 +86,9 @@ services:
         condition: service_started
     mem_limit: 128m
     logging: *logging
+    networks:
+      proxy:
+        ipv4_address: 172.30.241.9
 
   frontend:
     image: econmind-frontend:local
@@ -88,8 +97,9 @@ services:
       args:
         VITE_API_BASE: ""
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:8080:80"
+    networks:
+      proxy:
+        ipv4_address: 172.30.241.10
     volumes:
       - ./nginx.server.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
@@ -115,7 +125,7 @@ services:
       - --workers
       - "1"
       - --proxy-headers
-      - --forwarded-allow-ips=*
+      - --forwarded-allow-ips=172.30.241.10
     depends_on:
       nats:
         condition: service_started
@@ -133,6 +143,9 @@ services:
       start_period: 60s
     mem_limit: 1024m
     logging: *logging
+    networks:
+      - default
+      - proxy
 
   econmind-worker:
     image: econmind-backend:local
@@ -176,3 +189,12 @@ volumes:
   caddy_config:
   nats_data:
   redis_data:
+
+networks:
+  default: {}
+  # Dedicated ingress network; only the frontend's fixed address may supply
+  # forwarding headers to Uvicorn. Check for host network conflicts before deploy.
+  proxy:
+    ipam:
+      config:
+        - subnet: 172.30.241.0/28
