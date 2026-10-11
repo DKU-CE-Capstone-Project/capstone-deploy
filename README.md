@@ -111,6 +111,12 @@ python3 scripts/check-news-map-settings.py --backend-root ../capstone-backend
 
 기본값과 변경값으로 총 **8가지 구성 × 22개 설정 × API/워커 전달 및 포트 검사 통과**(Docker Compose v5.3.0). 검사용 변경값(최초 15·총 35 등)은 백엔드 Settings 검증도 별도로 통과했고, 최초>총상한 조합은 거부됨을 확인했다. `--env-file /dev/null`·검사용 인증값을 사용해 실제 `.env`를 읽거나 출력하지 않는다. 1차(20개)·2026-09-30(8개) 기록은 각 날짜의 결과다. 앱 이미지 빌드·운영 DB·운영 재시작·배포·원격 CI는 검증하지 않았다. 날짜별 근거는 정본 `docs/99-verification.md`에 있다.
 
+## 2026-10-11 GCP v2 배포 기록
+
+백엔드 #18 → `0776ac2`, 프론트 #16 → `225c334`, 배포 #15 → `4cc231b`, 문서 #14를 main에 병합한 뒤 [운영 서비스](https://econmind.duckdns.org)에 반영했다. 서버 빌드·기동, 공개 health/ready, 실제 NAVER·Decision 국제유가 주변 4/4, FREE 1건의 Diffbot·Gemini 리포트/전략·MongoDB 저장·브라우저 새로고침 복원을 확인했다. 운영은 `decision`, FREE, PAID 데모 차단, RAG off, critic on이다.
+
+기존 기사 57·리포트 6·전략 11건은 호환 검사와 쓰기 중지·압축 DB 백업 후 v2 validator/인덱스를 적용했다. 중복 `report_id_1`·`strategy_id_1`만 제거하고 기존 sparse unique 인덱스를 유지했으며, 전환 전후 문서 지문이 동일했다. 백업은 서버 `/home/econmind/backups/20261011-newsmap-v2`(0700)에 있다. 로컬 전용 마이그레이션 CLI를 변경하지 않고 대상 DB와 인덱스를 고정한 일회성 운영 래퍼로 수행했다. 실제 설정·검증·DB 롤백 순서는 [정본 배포 기록](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/99-verification.md#2026-10-11-newsmap-v2-gcp-배포)을 따른다.
+
 ## GCP 서버 구성과 병합 후 배포 (Docker Compose)
 
 2026-09-18 운영 기록상 서버: `35.216.13.110` · 서비스: https://econmind.duckdns.org
@@ -130,7 +136,7 @@ python3 scripts/check-news-map-settings.py --backend-root ../capstone-backend
 `econmind_redis_data`, `econmind_nats_data` Docker 볼륨을 이어 사용합니다.
 외부 공개 포트는 80/443이며 서버 프론트에는 별도 호스트 포트가 없습니다.
 Caddy(172.30.241.9)와 프론트(172.30.241.10)는 전용 `econmind_proxy` 네트워크(172.30.241.0/28)를 사용합니다. Caddy는 외부 전달 IP를 버리고 직접 연결된 주소를 Nginx에 전달하며, Nginx는 Caddy 주소에서 온 값만 인정합니다. API는 프론트 주소만 프록시로 신뢰합니다. 이 세 주소를 함께 유지해야 연결 IP별 요청·세션 발급 한도가 유효합니다.
-서버 적용 전에는 기존 Docker 네트워크와 호스트 라우팅에 172.30.241.0/28 충돌이 없는지 확인해야 합니다. 충돌이 있으면 Compose의 서브넷·두 고정 IP, Nginx의 `set_real_ip_from`, API의 `--forwarded-allow-ips`를 같은 변경에서 조정합니다. 실제 서버 네트워크 검사는 아직 수행하지 않았습니다.
+서버 적용 전에는 기존 Docker 네트워크와 호스트 라우팅에 172.30.241.0/28 충돌이 없는지 확인해야 합니다. 충돌이 있으면 Compose의 서브넷·두 고정 IP, Nginx의 `set_real_ip_from`, API의 `--forwarded-allow-ips`를 같은 변경에서 조정합니다. 2026-10-11 실제 서버에서 대역 충돌 없음과 새 프록시 네트워크 기동을 확인했습니다.
 
 ### 서버의 실제 뉴스 설정
 
@@ -146,8 +152,9 @@ Caddy(172.30.241.9)와 프론트(172.30.241.10)는 전용 `econmind_proxy` 네�
 | `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | NCP NAVER API HUB 앱의 뉴스 검색 인증키 |
 | `DIFFBOT_TOKEN` | Diffbot Article API 토큰 |
 | `GOOGLE_API_KEY` | Gemini API 키 |
+| `OPENAI_API_KEY` | `NEWS_MAP_SELECTOR=decision` 운영 선정에 사용하는 키 |
 | `APP_ORIGIN` | `https://econmind.duckdns.org` |
-| `USE_RAG`, `USE_CRITIC` | 기본 `true` |
+| `USE_RAG`, `USE_CRITIC` | Compose 기본 `true`, 2026-10-11 운영은 각각 `false`/`true` |
 
 서버 Compose는 `NEWS_PROVIDER=naver`, `DEMO_MODE=false`, `USE_MOCK_NEWS=false`, `USE_MONGODB=true`, `MONGODB_REQUIRED=true`, `LLM_PROVIDER=gemini`, `GEMINI_MODEL=gemini-3.5-flash-lite`, `GEMINI_SERVICE_TIER=flex`를 API와 워커 모두에 전달한다. 키나 MongoDB URI가 빠지면 Compose 검증이 실패한다.
 신규 세션은 기본적으로 연결 IP당 시간당 30회, 전체 시간당 600회로 제한한다. `SESSION_ISSUE_CLIENT_HOURLY_LIMIT`와 `SESSION_ISSUE_GLOBAL_HOURLY_LIMIT`는 운영 트래픽과 공유 IP 환경을 확인한 뒤 조정한다. 이 한도는 Redis에 저장되며 Redis 장애 시 발급을 거부한다.
@@ -200,7 +207,7 @@ API 메모리 캐시는 재시작 시 초기화되지만 저장한 뉴스·본�
 
 ### 롤백
 
-실패 시 백업한 Compose/Nginx/환경 파일과 기존 이미지의 rollback 태그를 복구해 같은 `econmind` 프로젝트로 다시 기동한다. 이전 Mongo overlay를 사용하던 구성으로 돌아갈 때는 백업한 overlay도 함께 지정한다. Git 상태는 기록한 SHA를 기준으로 복구하되 서버의 미추적 사용자 파일을 삭제하지 않는다. 이번 변경은 DB 컬렉션 삭제나 validator 강제 승격을 하지 않는다. DB 복원은 필요할 때만 별도 점검 후 수행한다.
+실패 시 백업한 Compose/Nginx/환경 파일과 기존 이미지의 rollback 태그를 복구해 같은 `econmind` 프로젝트로 다시 기동한다. 이전 Mongo overlay를 사용하던 구성으로 돌아갈 때는 백업한 overlay도 함께 지정한다. Git 상태는 기록한 SHA를 기준으로 복구하되 서버의 미추적 사용자 파일을 삭제하지 않는다. 2026-10-11 배포에서는 기존 문서 호환 검사 후 v2 validator를 strict/error로 적용했다. DB 메타데이터를 되돌릴 때는 배포 뒤 저장된 v2 문서의 호환성부터 확인하고 원본 메타데이터·추가 인덱스·중복 인덱스 정리 기록을 함께 사용한다. 컬렉션/문서는 삭제하지 않으며, DB 전체 복원은 필요할 때만 별도 점검 후 수행한다.
 
 ---
 
