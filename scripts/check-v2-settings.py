@@ -36,7 +36,8 @@ def main():
                 "MONGODB_ROOT_USERNAME": "fixture", "MONGODB_ROOT_PASSWORD": "fixture",
                 "MONGODB_APP_USERNAME": "fixture", "MONGODB_APP_PASSWORD": "fixture",
                 "NAVER_CLIENT_ID": "fixture", "NAVER_CLIENT_SECRET": "fixture", "DIFFBOT_TOKEN": "fixture",
-                "GOOGLE_API_KEY": "fixture", "APP_ORIGIN": "https://example.invalid"})
+                "GOOGLE_API_KEY": "fixture", "APP_ORIGIN": "https://example.invalid",
+                "ECONMIND_TEAM_USER": "fixture-team", "ECONMIND_TEAM_PASSWORD_HASH": "fixture-hash"})
     overrides = {key: str(int(value) + 1) for key, value in defaults.items() if value.isdigit()}
     for files in (["compose.server.yaml"], ["docker-compose.yaml"], ["docker-compose.yaml", "docker-compose.burst.yaml"], ["docker-compose.yaml", "compose.server.yaml"]):
         for label, custom in (("defaults", {}), ("overrides", overrides)):

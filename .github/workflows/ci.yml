@@ -26,6 +26,8 @@ jobs:
       DIFFBOT_TOKEN: ci-diffbot-token
       GOOGLE_API_KEY: ci-google-key
       APP_ORIGIN: https://example.invalid
+      ECONMIND_TEAM_USER: ci-team
+      ECONMIND_TEAM_PASSWORD_HASH: ci-fixture-hash
       MONGODB_ROOT_USERNAME: ci-root
       MONGODB_ROOT_PASSWORD: ci-root-password
       MONGODB_APP_USERNAME: ci-app
@@ -45,8 +47,8 @@ jobs:
         run: |
           PROTOTYPE_TIER=PAID PAID_DEMO_ENABLED=true docker compose -f compose.server.yaml config --format json | python3 scripts/check-server-security.py --paid-demo
 
-      - name: Validate Caddy proxy syntax
-        run: docker run --rm -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile > /dev/null
+      - name: Validate Caddy team authentication and proxy syntax
+        run: python3 scripts/check-team-access.py
 
       - name: Validate Nginx proxy syntax and real-IP module
         run: |

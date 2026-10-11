@@ -50,6 +50,26 @@ python3 scripts/check-news-map-settings.py --backend-root ../capstone-backend-ma
 python3 scripts/check-v2-settings.py --backend-root ../capstone-backend-main-integration
 ```
 
+## 팀 전용 접속 인증 (2026-10-11)
+
+서버 Caddy는 홈페이지·정적 파일·모든 API·공개 `/health`와 `/ready`에 HTTP Basic 인증을 요구한다. 인증이 없거나 잘못되면 백엔드에 전달하기 전에 `401`과 브라우저 로그인 창을 반환한다. HTTP 접속은 HTTPS로 리다이렉트하며 비밀번호는 HTTPS에서만 입력한다. 인증 후에는 `Authorization` 헤더를 제거해 프론트·백엔드로 보내지 않는다. 내부 컨테이너 healthcheck는 기존 사설 경로를 사용한다.
+
+`deploy/.env`(0600)에 `ECONMIND_TEAM_USER`와 `ECONMIND_TEAM_PASSWORD_HASH`를 추가한다. 두 값은 Caddy에만 전달되며 누락되면 Compose 실행이 실패한다. 비밀번호 원문은 서버 `.env`나 Git에 저장하지 않는다. 해시는 `docker run --rm -it caddy:2-alpine caddy hash-password`의 숨김 입력으로 만든다. bcrypt 해시의 `$`를 보존하려면 `.env`에서 해시 전체를 작은따옴표로 감싼다. 실제 값은 문서·명령 이력·CI 로그에 넣지 않는다.
+
+환경변수 변경은 단순 reload에 반영되지 않으므로 기존 설정을 비공개 백업한 뒤 **Caddy만** 재생성한다. 프론트·백엔드 빌드, DB 변경, 세션 초기화는 필요 없다.
+
+```bash
+sudo docker compose -f compose.server.yaml config -q
+sudo docker compose -f compose.server.yaml up -d --no-deps --no-build --pull never --force-recreate caddy
+curl -sS -o /dev/null -w '%{http_code}\n' https://econmind.duckdns.org/api/v2/session
+# 위 익명 요청은 401이어야 한다. 아래는 비밀번호를 대화형으로 입력한다.
+curl --user econmind-team -fsS https://econmind.duckdns.org/ready
+```
+
+인증 성공 후 홈페이지·`/ready`·세션 capability를 확인한다. 공용 계정은 접속 허용만 공유하며, 리포트·탐색 소유권은 기존 브라우저별 세션을 따른다. 계정 공유 범위가 바뀌면 비밀번호를 교체하고 Caddy만 재생성한다. Basic 인증은 API 무단 사용을 차단하지만 네트워크 과부하 방어나 비용 총액 상한을 대신하지 않는다. 기존 요청 한도는 유지한다.
+
+로컬/CI는 `python3 scripts/check-team-access.py`로 실제 Caddy 규칙과 가짜 upstream을 실행해 화면/API, 잘못된 인증, 인증 헤더 제거, 인증값 누락 시 Compose 시작 거부와 bcrypt 해시 보존을 검사한다. 운영 자격증명·DB·유료 API를 사용하지 않는다.
+
 ## 운영 보안 설정 (2026-10-10)
 
 서버 Compose는 백엔드의 세션 저장소를 필수(`SESSION_STORE_REQUIRED=true`)로 설정한다. Redis 연결이 끊기면 세션·리포트·전략·작업 결과 API와 `/ready`가 503을 반환해 인증 성격의 상태가 프로세스 메모리로 갈라지지 않는다. HTTPS 쿠키는 `Secure`와 `SameSite=lax`로 발급한다. PAID 데모는 기본적으로 차단하며, 운영자가 `PROTOTYPE_TIER=PAID`와 `PAID_DEMO_ENABLED=true`를 함께 설정하면 최대 10건 선택을 허용한다. 이 설정은 서버 전체의 프로토타입 한도이며 로그인·구독 인증이 아니다. Redis 필수·쿠키 보안·요청 한도·프록시 신뢰 설정은 유지한다. 기본 구성은 `check-server-security.py`, 명시적 PAID 구성은 같은 스크립트의 `--paid-demo`로 검사한다.
@@ -196,8 +216,8 @@ sudo docker compose -f compose.server.yaml build econmind-api
 sudo docker compose -f compose.server.yaml build frontend
 sudo docker compose -f compose.server.yaml up -d --no-build --wait --wait-timeout 180
 sudo docker compose -f compose.server.yaml ps
-curl -fsS https://econmind.duckdns.org/health
-curl -fsS https://econmind.duckdns.org/ready
+curl --user econmind-team -fsS https://econmind.duckdns.org/health
+curl --user econmind-team -fsS https://econmind.duckdns.org/ready
 ```
 
 > 예전에는 마지막에 `up -d --no-deps --force-recreate frontend`로 프론트를 다시 만들어야 했습니다.

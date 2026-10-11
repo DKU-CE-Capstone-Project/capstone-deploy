@@ -95,6 +95,9 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    environment:
+      ECONMIND_TEAM_USER: ${ECONMIND_TEAM_USER:?Set the team login username}
+      ECONMIND_TEAM_PASSWORD_HASH: ${ECONMIND_TEAM_PASSWORD_HASH:?Set the Caddy password hash}
     ports:
       - "80:80"
       - "443:443"

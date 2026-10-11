@@ -1,7 +1,12 @@
 # Public HTTPS; certificates are renewed automatically in the caddy_data volume.
 econmind.duckdns.org {
+	# Protect every UI/API path before forwarding; credentials exist only in Caddy.
+	basic_auth {
+		{$ECONMIND_TEAM_USER} {$ECONMIND_TEAM_PASSWORD_HASH}
+	}
 	encode zstd gzip
 	reverse_proxy frontend:80 {
+		header_up -Authorization
 		# Use the direct peer only; discard any client-supplied forwarding chain.
 		header_up X-Forwarded-For {http.request.remote.host}
 	}
