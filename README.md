@@ -4,11 +4,17 @@
 
 ## 뉴스맵 API v2 · 로컬 DB 검증 (2026-10-11)
 
+현재 기준은 `codex/newsmap-v2-20261011`의 `feef01f`이며, fetch로 확인한 `origin/main/28b9652`보다 1커밋 앞선 로컬 구현이다. 함께 확인한 백엔드는 `9451057`과 기존 검색 범위 변경, 프론트는 `e986b3f`와 기존 휠 상태 안내 변경이다. 정본 `econmind-docs/docs/14-newsmap-v2-implementation.md`에 네 저장소의 현황을 반영했다. 이번 문서 동기화는 Compose 적용·마이그레이션 실행·운영 배포를 수행한 기록이 아니다.
+
 설계 정본 `econmind-docs/docs/10-newsmap-prototype-api-design.md`와 `docs/11-newsmap-prototype-db-design.md`(2026-10-04)에 맞춰 `news.body_ref`, 별도 `news_bodies`, v2 리포트·전략 DTO와 부분 유니크 재사용 인덱스를 추가했다. 신규 DB는 `mongo-init/05-newsmap-v2.js`가 strict/error 규칙을 적용한다. 기존 DB는 init 파일 변경만으로 갱신되지 않으므로 아래 dry-run 절차를 사용한다. 무버전/1 결과는 실제 v1 필수 필드·자료형을 검사하는 호환 분기로 유지한다. 과거 프로토타입의 서로 다른 `schema_version=2` 형식은 자동 변환하지 않고 불일치로 중단한다.
 
 새 본문·결과 시각은 BSON Date이며, 레거시의 문자열 시각은 호환 분기에만 허용한다. provenance가 없는 기존 `news.content`는 새 본문으로 승격하지 않는다. 본문은 서비스에서 삽입만 하고 카드 갱신으로 지우거나 덮어쓰지 않는다. MongoDB validator 자체는 이전 문서와 비교하는 불변성 검사나 교차 참조를 강제하지 않으므로 백엔드 저장 경로의 검증도 함께 필요하다. 본문·리포트·전략에 TTL 인덱스는 없다.
 
 API·두 워커 모두 Decision 설정(`NEWS_MAP_SELECTOR=embedding` 기본값)과 v2 설정을 전달한다. `decision`은 명시적으로 선택할 때만 활성화한다. `OPENAI_API_KEY`는 백엔드 환경에만 전달한다. 공유 v2 상태는 Redis를 사용하며 Compose에서 `V2_STATE_MEMORY=false`를 고정했다. 서버의 필수 Redis, Secure/SameSite 쿠키, PAID 차단, 연결 IP 제한, 신뢰 프록시 주소는 유지한다. 로컬 기본 워커도 API와 같은 MongoDB를 사용한다. `econmind-worker`는 기존 v1 큐, `econmind-v2-worker`는 별도 `reports.generate.v2` 큐를 처리한다. 기본/서버 Compose는 두 워커를 함께 기동하며 v1 burst 오버레이에서는 v2 워커가 `v2` 프로파일로 분리된다.
+
+백엔드의 현재 추가 검색은 원래 검색어만 사용하고 원시 검색 위치 50에서 멈춘다(기본 1~20 → 21~40 → 41~50). 기존 `NEWS_MAP_MAX_CANDIDATES`는 별도의 고유 평가 후보 상한이며 이 값을 올려 원시 위치 제한을 해제하는 기능은 없다. 파생 검색어는 제거됐고 새 Compose 설정은 필요하지 않다. 아래 2026-10-02 설정 설명 중 근거 검색어 확장·고유 후보만으로 상한을 설명한 부분은 당시 동작이다. Decision 질문·임계값 조정과 중심 자동 재선정 개선은 보류 상태다.
+
+일반 앱/Compose의 `PROTOTYPE_TIER=FREE`와 서버 `PAID_DEMO_ENABLED=false`는 유지한다. 백엔드 `scripts/run-newsmap-v2-local.py` 및 프론트 UI fixture의 PAID 기본값은 **로컬 데모 전용**이며 서버 Compose가 PAID로 바뀐 것은 아니다. 로컬 스크립트는 Decision과 별도 테스트 DB를 사용하고, FREE 검증은 API·워커 모두 `--tier FREE`를 지정한다.
 
 로컬 검증은 기존 `.env`와 운영 계정·볼륨을 읽지 않는 별도 Compose를 쓴다. `econmind-v2-local-test` 프로젝트의 MongoDB(27218), Redis(6388), NATS(4233/8233)는 **127.0.0.1**에만 열린다. 공개하지 않는 합성 데이터용 DB이며 인증을 요구하지 않는다. MongoDB 8.0.32 이미지의 digest를 고정했으며 Atlas 벡터 검색은 검증 범위에 포함하지 않는다. 외부 뉴스·LLM 호출은 fixture/mock으로 대체하고 로컬 통합에서 `USE_RAG=false`로 실행한다.
 
@@ -35,6 +41,14 @@ python3 scripts/check-v2-settings.py --backend-root "$BACKEND_ROOT"
 ```
 
 로컬 서비스를 멈출 때는 `docker compose --env-file /dev/null -f compose.local-test.yaml down`을 사용한다. 별도 named volume은 다음 실행에서도 유지된다. 실제 deploy `.env`는 변경하지 않는다.
+
+2026-10-11 문서 동기화 시 다음 두 검사를 다시 실행했다. 뉴스맵 **29개 설정**, v2 **11개 설정**에 대해 4가지 Compose 조합 × 기본/override, API·두 워커의 전달값과 포트 정책을 확인했다. 서버 보안 설정 및 격리 볼륨 검사도 통과했다. 서비스 시작·DB 마이그레이션 테스트·운영 연결은 재실행하지 않았다.
+
+```bash
+# 현재 형제 worktree 배치 기준. 다른 배치는 실제 백엔드 경로 사용
+python3 scripts/check-news-map-settings.py --backend-root ../capstone-backend-main-integration
+python3 scripts/check-v2-settings.py --backend-root ../capstone-backend-main-integration
+```
 
 ## 운영 보안 설정 (2026-10-10)
 
