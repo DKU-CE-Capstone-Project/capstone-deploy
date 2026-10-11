@@ -80,7 +80,9 @@ python3 scripts/check-news-map-settings.py --backend-root ../capstone-backend
 `Caddyfile`은 HTTPS 진입점, `nginx.server.conf`는 프론트에서 API로 전달하는 프록시 설정입니다.
 프로젝트 이름 `econmind`를 유지해 기존 `econmind_caddy_data`, `econmind_caddy_config`,
 `econmind_redis_data`, `econmind_nats_data` Docker 볼륨을 이어 사용합니다.
-외부 공개 포트는 80/443이며, 점검용 프론트 포트 8080은 서버의 127.0.0.1에만 연결됩니다.
+외부 공개 포트는 80/443이며 서버 프론트에는 별도 호스트 포트가 없습니다.
+Caddy(172.30.241.9)와 프론트(172.30.241.10)는 전용 `econmind_proxy` 네트워크(172.30.241.0/28)를 사용합니다. Caddy는 외부 전달 IP를 버리고 직접 연결된 주소를 Nginx에 전달하며, Nginx는 Caddy 주소에서 온 값만 인정합니다. API는 프론트 주소만 프록시로 신뢰합니다. 이 세 주소를 함께 유지해야 연결 IP별 요청·세션 발급 한도가 유효합니다.
+서버 적용 전에는 기존 Docker 네트워크와 호스트 라우팅에 172.30.241.0/28 충돌이 없는지 확인해야 합니다. 충돌이 있으면 Compose의 서브넷·두 고정 IP, Nginx의 `set_real_ip_from`, API의 `--forwarded-allow-ips`를 같은 변경에서 조정합니다. 실제 서버 네트워크 검사는 아직 수행하지 않았습니다.
 
 ### 서버의 실제 뉴스 설정
 
@@ -100,6 +102,8 @@ python3 scripts/check-news-map-settings.py --backend-root ../capstone-backend
 | `USE_RAG`, `USE_CRITIC` | 기본 `true` |
 
 서버 Compose는 `NEWS_PROVIDER=naver`, `DEMO_MODE=false`, `USE_MOCK_NEWS=false`, `USE_MONGODB=true`, `MONGODB_REQUIRED=true`, `LLM_PROVIDER=gemini`, `GEMINI_MODEL=gemini-3.5-flash-lite`, `GEMINI_SERVICE_TIER=flex`를 API와 워커 모두에 전달한다. 키나 MongoDB URI가 빠지면 Compose 검증이 실패한다.
+신규 세션은 기본적으로 연결 IP당 시간당 30회, 전체 시간당 600회로 제한한다. `SESSION_ISSUE_CLIENT_HOURLY_LIMIT`와 `SESSION_ISSUE_GLOBAL_HOURLY_LIMIT`는 운영 트래픽과 공유 IP 환경을 확인한 뒤 조정한다. 이 한도는 Redis에 저장되며 Redis 장애 시 발급을 거부한다.
+작업·리포트·전략·분석 생성도 세션당/연결 IP당/전체 한도를 함께 검사한다. 기본 연결 IP 한도는 각각 시간당 20/10/20/20회이고, `JOBS_CLIENT_HOURLY_LIMIT` 등으로 조정할 수 있다. 공유 IP를 쓰는 팀·학교 환경에서는 실제 사용량을 확인해야 한다.
 
 2026-09-18 운영 기록상 GCP는 같은 VM의 MongoDB 컨테이너 대신 **기존 홈 서버 DB로 연결되는 SSH 역방향 터널**을 사용했다. 이 연결을 계속 사용할 경우 앱 URI의 호스트는 `host.docker.internal:27017`이고 `directConnection=true`가 필요하다. 서버 Compose는 API·워커에 host-gateway 매핑을 제공하지만 새 MongoDB나 터널을 만들지는 않는다. 배포 전에 서버의 실제 연결 상태를 다시 확인해야 한다.
 

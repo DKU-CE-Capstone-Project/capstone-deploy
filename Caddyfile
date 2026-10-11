@@ -1,7 +1,10 @@
 # Public HTTPS; certificates are renewed automatically in the caddy_data volume.
 econmind.duckdns.org {
 	encode zstd gzip
-	reverse_proxy frontend:80
+	reverse_proxy frontend:80 {
+		# Use the direct peer only; discard any client-supplied forwarding chain.
+		header_up X-Forwarded-For {http.request.remote.host}
+	}
 }
 
 # Existing IP bookmarks redirect to the canonical HTTPS URL.
