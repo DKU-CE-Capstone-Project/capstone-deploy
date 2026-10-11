@@ -14,7 +14,7 @@ API·두 워커 모두 Decision 설정(`NEWS_MAP_SELECTOR=embedding` 기본값)�
 
 백엔드의 현재 추가 검색은 원래 검색어만 사용하고 원시 검색 위치 50에서 멈춘다(기본 1~20 → 21~40 → 41~50). 기존 `NEWS_MAP_MAX_CANDIDATES`는 별도의 고유 평가 후보 상한이며 이 값을 올려 원시 위치 제한을 해제하는 기능은 없다. 파생 검색어는 제거됐고 새 Compose 설정은 필요하지 않다. 아래 2026-10-02 설정 설명 중 근거 검색어 확장·고유 후보만으로 상한을 설명한 부분은 당시 동작이다. Decision 질문·임계값 조정과 중심 자동 재선정 개선은 보류 상태다.
 
-일반 앱/Compose의 `PROTOTYPE_TIER=FREE`와 서버 `PAID_DEMO_ENABLED=false`는 유지한다. 백엔드 `scripts/run-newsmap-v2-local.py` 및 프론트 UI fixture의 PAID 기본값은 **로컬 데모 전용**이며 서버 Compose가 PAID로 바뀐 것은 아니다. 로컬 스크립트는 Decision과 별도 테스트 DB를 사용하고, FREE 검증은 API·워커 모두 `--tier FREE`를 지정한다.
+일반 앱/Compose의 기본값은 `PROTOTYPE_TIER=FREE`, `PAID_DEMO_ENABLED=false`다. 서버에서 최대 10건을 허용하려면 `.env`에 `PROTOTYPE_TIER=PAID`와 `PAID_DEMO_ENABLED=true`를 함께 명시한다. 백엔드 `scripts/run-newsmap-v2-local.py` 및 프론트 UI fixture의 PAID 기본값은 **로컬 데모 전용**이며 서버의 명시적 PAID 설정과 구분한다. 로컬 스크립트는 Decision과 별도 테스트 DB를 사용하고, FREE 검증은 API·워커 모두 `--tier FREE`를 지정한다.
 
 로컬 검증은 기존 `.env`와 운영 계정·볼륨을 읽지 않는 별도 Compose를 쓴다. `econmind-v2-local-test` 프로젝트의 MongoDB(27218), Redis(6388), NATS(4233/8233)는 **127.0.0.1**에만 열린다. 공개하지 않는 합성 데이터용 DB이며 인증을 요구하지 않는다. MongoDB 8.0.32 이미지의 digest를 고정했으며 Atlas 벡터 검색은 검증 범위에 포함하지 않는다. 외부 뉴스·LLM 호출은 fixture/mock으로 대체하고 로컬 통합에서 `USE_RAG=false`로 실행한다.
 
@@ -52,7 +52,7 @@ python3 scripts/check-v2-settings.py --backend-root ../capstone-backend-main-int
 
 ## 운영 보안 설정 (2026-10-10)
 
-서버 Compose는 백엔드의 세션 저장소를 필수(`SESSION_STORE_REQUIRED=true`)로 설정한다. Redis 연결이 끊기면 세션·리포트·전략·작업 결과 API와 `/ready`가 503을 반환해 인증 성격의 상태가 프로세스 메모리로 갈라지지 않는다. HTTPS 쿠키는 `Secure`와 `SameSite=lax`로 발급한다. 실제 구독 권한 검증이 구현되기 전까지 `PAID_DEMO_ENABLED=false`로 유료 시연 경로를 차단한다. 세 값은 서버 Compose에서 명시적으로 고정했다.
+서버 Compose는 백엔드의 세션 저장소를 필수(`SESSION_STORE_REQUIRED=true`)로 설정한다. Redis 연결이 끊기면 세션·리포트·전략·작업 결과 API와 `/ready`가 503을 반환해 인증 성격의 상태가 프로세스 메모리로 갈라지지 않는다. HTTPS 쿠키는 `Secure`와 `SameSite=lax`로 발급한다. PAID 데모는 기본적으로 차단하며, 운영자가 `PROTOTYPE_TIER=PAID`와 `PAID_DEMO_ENABLED=true`를 함께 설정하면 최대 10건 선택을 허용한다. 이 설정은 서버 전체의 프로토타입 한도이며 로그인·구독 인증이 아니다. Redis 필수·쿠키 보안·요청 한도·프록시 신뢰 설정은 유지한다. 기본 구성은 `check-server-security.py`, 명시적 PAID 구성은 같은 스크립트의 `--paid-demo`로 검사한다.
 
 리포트·전략·작업 결과는 생성한 브라우저 세션에서만 조회할 수 있다. 세션이 만료되거나 초기화되면 기존 결과는 조회할 수 없고, 기존 소유자 정보가 없는 결과도 API에서 조회할 수 없다. 작업 제출은 세션당 시간당 10건·전체 200건, 리포트 생성은 5건·전체 100건, 전략 생성은 10건·전체 200건으로 제한된다. 서버에 실제 Redis가 필요하며, 새 백엔드·프론트·Compose 커밋을 함께 배포한 뒤 `/ready`의 `mongodb`와 `redis`가 모두 `on`인지 확인한다. 이 저장소 변경 자체는 운영 서버 배포를 의미하지 않는다.
 
@@ -110,6 +110,19 @@ python3 scripts/check-news-map-settings.py --backend-root ../capstone-backend
 ```
 
 기본값과 변경값으로 총 **8가지 구성 × 22개 설정 × API/워커 전달 및 포트 검사 통과**(Docker Compose v5.3.0). 검사용 변경값(최초 15·총 35 등)은 백엔드 Settings 검증도 별도로 통과했고, 최초>총상한 조합은 거부됨을 확인했다. `--env-file /dev/null`·검사용 인증값을 사용해 실제 `.env`를 읽거나 출력하지 않는다. 1차(20개)·2026-09-30(8개) 기록은 각 날짜의 결과다. 앱 이미지 빌드·운영 DB·운영 재시작·배포·원격 CI는 검증하지 않았다. 날짜별 근거는 정본 `docs/99-verification.md`에 있다.
+
+## GCP에서 최대 10건 선택하기
+
+서버 `deploy/.env`의 아래 두 값이 API·v1/v2 워커에 동일하게 전달되어야 한다. 이미 빌드한 앱 이미지로 설정만 재적용할 수 있다.
+
+```dotenv
+PROTOTYPE_TIER=PAID
+PAID_DEMO_ENABLED=true
+```
+
+기존 Redis v2 세션은 생성 당시 티어를 기억한다. 기존 탐색·선택·리포트 연결을 유지하려면 API·두 워커의 쓰기를 중지하고 `v2:session:*` 문서를 보호된 백업에 저장한 뒤 `prototype_tier`만 `PAID`로 갱신한다. `SET ... XX KEEPTTL`로 만료를 연장하거나 없어진 세션을 되살리지 않으며 다른 필드는 유지한다. 세션 전체 삭제나 Redis flush는 하지 않는다. 이후 `compose.server.yaml`로 API·두 워커를 재기동하고 기존/신규 세션의 `capabilities.max_report_articles=10`을 확인한다. 기존 브라우저는 새로고침해 새 capability를 읽는다.
+
+무료로 복귀할 때도 두 설정(`FREE`/`false`)과 기존 세션 티어를 함께 점검한다. 이미 2건 이상 선택되었거나 실행 중인 작업의 처리 방침을 확인한 뒤 전환한다. 원래 검색어의 1~50번째 후보 수집과 Decision 선정 기준은 선택 한도와 별개다.
 
 ## 2026-10-11 GCP v2 배포 기록
 

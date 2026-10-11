@@ -1,5 +1,6 @@
 """Fail CI when server Compose drops required backend security controls."""
 
+import argparse
 import json
 from ipaddress import ip_address, ip_network
 from pathlib import Path
@@ -7,6 +8,9 @@ import sys
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--paid-demo", action="store_true", help="Validate an explicitly enabled PAID prototype")
+    args = parser.parse_args()
     compose = json.load(sys.stdin)
     services = compose["services"]
     expected = {
@@ -14,8 +18,10 @@ def main() -> None:
         "V2_STATE_MEMORY": "false",
         "SESSION_COOKIE_SECURE": "true",
         "SESSION_COOKIE_SAMESITE": "lax",
-        "PAID_DEMO_ENABLED": "false",
+        "PAID_DEMO_ENABLED": "true" if args.paid_demo else "false",
     }
+    if args.paid_demo:
+        expected["PROTOTYPE_TIER"] = "paid"
     for name in ("econmind-api", "econmind-worker", "econmind-v2-worker"):
         env = services[name]["environment"]
         for key, value in expected.items():

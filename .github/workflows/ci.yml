@@ -41,6 +41,10 @@ jobs:
       - name: Validate server security settings
         run: docker compose -f compose.server.yaml config --format json | python3 scripts/check-server-security.py
 
+      - name: Validate explicit PAID demo settings
+        run: |
+          PROTOTYPE_TIER=PAID PAID_DEMO_ENABLED=true docker compose -f compose.server.yaml config --format json | python3 scripts/check-server-security.py --paid-demo
+
       - name: Validate Caddy proxy syntax
         run: docker run --rm -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile > /dev/null
 
