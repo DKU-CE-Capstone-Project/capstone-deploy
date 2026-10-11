@@ -7,7 +7,7 @@
 const DB_NAME = process.env.MONGODB_INITDB_DATABASE || 'capstone_news';
 const d = db.getSiblingDB(DB_NAME);
 
-const EXPECTED = ['news', 'news_analysis', 'news_relations', 'mindmaps',
+const EXPECTED = ['news', 'news_bodies', 'news_analysis', 'news_relations', 'mindmaps',
                   'reports', 'strategies', 'jobs', 'users'];
 
 let failures = 0;
@@ -18,10 +18,10 @@ function check(label, ok, detail) {
 
 print(`\n=== ${DB_NAME} 검증 ===\n`);
 
-// 1) 컬렉션 8개
+// 1) 기존 8개 + immutable body 버전 컬렉션
 const names = d.getCollectionNames();
 const missing = EXPECTED.filter((n) => !names.includes(n));
-check('컬렉션 8개', missing.length === 0, missing.length ? `누락: ${missing.join(', ')}` : names.filter(n => EXPECTED.includes(n)).sort().join(', '));
+check('컬렉션 9개', missing.length === 0, missing.length ? `누락: ${missing.join(', ')}` : names.filter(n => EXPECTED.includes(n)).sort().join(', '));
 
 // 2) 인덱스 + validator
 for (const name of EXPECTED) {
@@ -30,7 +30,7 @@ for (const name of EXPECTED) {
   const info = d.getCollectionInfos({ name })[0] || {};
   const opts = info.options || {};
   const action = opts.validationAction || '(none)';
-  const hasValidator = !!(opts.validator && opts.validator.$jsonSchema);
+  const hasValidator = !!(opts.validator && (opts.validator.$jsonSchema || opts.validator.$or));
   check(`${name}: validator=${action}, 인덱스 ${idx.length}개`,
         hasValidator && idx.length > 0, idx.join(', '));
 }
@@ -50,7 +50,7 @@ d.news.deleteOne({ url: 'https://example.invalid/validator-probe' });
 // 4) 벡터검색 인덱스
 let vec = [];
 try { vec = d.news.getSearchIndexes('vector_index'); } catch (e) { /* mongot 미기동 */ }
-check('news.vector_index (768d cosine)', vec.length > 0,
+check('news.vector_index (768d cosine)', vec.length > 0 || process.env.MONGODB_EXPECT_VECTOR === 'false',
       vec.length ? `status=${vec[0].status}` : 'mongot 미기동이거나 아직 생성 전 — 앱 startup 이 재시도한다');
 
 // 5) 메모리 — 여유 1GB 이상 남는지 판단할 근거값
@@ -64,3 +64,5 @@ try {
 }
 
 print(`\n=== ${failures === 0 ? '전부 통과' : failures + '건 실패'} ===\n`);
+
+if (failures > 0) quit(1);

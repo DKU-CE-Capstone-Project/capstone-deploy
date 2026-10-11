@@ -26,6 +26,26 @@ x-backend-env: &backend-env
   GEMINI_TIMEOUT_SECONDS: "600"
   LLM_MAX_OUTPUT_TOKENS: "2048"
   EMBEDDING_TIMEOUT_SECONDS: "30"
+  V2_STATE_MEMORY: "false"
+  PROTOTYPE_TIER: ${PROTOTYPE_TIER:-FREE}
+  V2_MAX_MAPS: ${V2_MAX_MAPS:-10}
+  V2_MAX_MAP_NODES: ${V2_MAX_MAP_NODES:-100}
+  V2_MAX_MAP_DEPTH: ${V2_MAX_MAP_DEPTH:-5}
+  V2_BRANCH_HISTORY_LIMIT: ${V2_BRANCH_HISTORY_LIMIT:-100}
+  V2_BODY_TIMEOUT_SECONDS: ${V2_BODY_TIMEOUT_SECONDS:-30}
+  V2_BODY_CONCURRENCY: ${V2_BODY_CONCURRENCY:-3}
+  V2_BODY_CACHE_SECONDS: ${V2_BODY_CACHE_SECONDS:-3600}
+  V2_JOB_TIMEOUT_SECONDS: ${V2_JOB_TIMEOUT_SECONDS:-1800}
+  V2_JOB_TTL_SECONDS: ${V2_JOB_TTL_SECONDS:-86400}
+  NEWS_MAP_CLIENT_HOURLY_LIMIT: ${NEWS_MAP_CLIENT_HOURLY_LIMIT:-30}
+  NEWS_MAP_GLOBAL_HOURLY_LIMIT: ${NEWS_MAP_GLOBAL_HOURLY_LIMIT:-300}
+  NEWS_MAP_SELECTOR: ${NEWS_MAP_SELECTOR:-embedding}
+  NEWS_MAP_DECISION_TIMEOUT_SECONDS: ${NEWS_MAP_DECISION_TIMEOUT_SECONDS:-30}
+  NEWS_MAP_DECISION_TOTAL_TIMEOUT_SECONDS: ${NEWS_MAP_DECISION_TOTAL_TIMEOUT_SECONDS:-90}
+  NEWS_MAP_DECISION_CONCURRENCY: ${NEWS_MAP_DECISION_CONCURRENCY:-4}
+  NEWS_MAP_DECISION_MAX_CALLS: ${NEWS_MAP_DECISION_MAX_CALLS:-200}
+  NEWS_MAP_DECISION_CACHE_TTL_SECONDS: ${NEWS_MAP_DECISION_CACHE_TTL_SECONDS:-3600}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   NEWS_MAP_EMBEDDING_MODEL: ${NEWS_MAP_EMBEDDING_MODEL:-gemini-embedding-001}
   NEWS_MAP_EMBEDDING_DIMENSIONS: ${NEWS_MAP_EMBEDDING_DIMENSIONS:-768}
   NEWS_MAP_EMBEDDING_TASK_TYPE: ${NEWS_MAP_EMBEDDING_TASK_TYPE:-SEMANTIC_SIMILARITY}
@@ -152,6 +172,20 @@ services:
     pull_policy: never
     restart: unless-stopped
     command: ["python", "-m", "app.worker"]
+    environment: *backend-env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      econmind-api:
+        condition: service_healthy
+    mem_limit: 768m
+    logging: *logging
+
+  econmind-v2-worker:
+    image: econmind-backend:local
+    pull_policy: never
+    restart: unless-stopped
+    command: ["python", "-m", "app.v2.report_worker"]
     environment: *backend-env
     extra_hosts:
       - "host.docker.internal:host-gateway"

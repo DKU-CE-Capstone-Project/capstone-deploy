@@ -26,7 +26,18 @@ services:
 
   econmind-api:
     mem_limit: 512m
+    environment:
+      # Burst fixtures measure v1 queues and intentionally omit DB/AI work.
+      USE_MONGODB: "false"
+      MONGODB_REQUIRED: "false"
 
   econmind-worker:
+    environment:
+      USE_MONGODB: "false"
+      MONGODB_REQUIRED: "false"
     # 10개 × 200m = 2GB 상한
     mem_limit: 200m
+
+  econmind-v2-worker:
+    # Existing burst measurements exercise the v1 queue only.
+    profiles: ["v2"]

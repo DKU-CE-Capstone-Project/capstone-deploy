@@ -11,11 +11,12 @@ def main() -> None:
     services = compose["services"]
     expected = {
         "SESSION_STORE_REQUIRED": "true",
+        "V2_STATE_MEMORY": "false",
         "SESSION_COOKIE_SECURE": "true",
         "SESSION_COOKIE_SAMESITE": "lax",
         "PAID_DEMO_ENABLED": "false",
     }
-    for name in ("econmind-api", "econmind-worker"):
+    for name in ("econmind-api", "econmind-worker", "econmind-v2-worker"):
         env = services[name]["environment"]
         for key, value in expected.items():
             assert str(env.get(key, "")).lower() == value, f"{name}: {key} must be {value}"

@@ -13,6 +13,14 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 OVERRIDES = {
+    "NEWS_MAP_CLIENT_HOURLY_LIMIT": "15",
+    "NEWS_MAP_GLOBAL_HOURLY_LIMIT": "150",
+    "NEWS_MAP_SELECTOR": "decision",
+    "NEWS_MAP_DECISION_TIMEOUT_SECONDS": "15",
+    "NEWS_MAP_DECISION_TOTAL_TIMEOUT_SECONDS": "60",
+    "NEWS_MAP_DECISION_CONCURRENCY": "2",
+    "NEWS_MAP_DECISION_MAX_CALLS": "50",
+    "NEWS_MAP_DECISION_CACHE_TTL_SECONDS": "600",
     "NEWS_MAP_EMBEDDING_MODEL": "fixture-model",
     "NEWS_MAP_EMBEDDING_DIMENSIONS": "128",
     "NEWS_MAP_EMBEDDING_TASK_TYPE": "CLUSTERING",
@@ -78,21 +86,21 @@ def main():
     ]
     for files in combinations:
         for label, expected in (("defaults", defaults), ("overrides", OVERRIDES)):
-            command = ["docker", "compose", "--env-file", "/dev/null"]
+            command = ["docker", "compose", "--env-file", "/dev/null", "--profile", "*"]
             for filename in files:
                 command.extend(["-f", filename])
             command.extend(["config", "--format", "json"])
             output = subprocess.run(command, cwd=ROOT, env={**env, **(expected if label == "overrides" else {})},
                                     capture_output=True, text=True, check=True).stdout
             config = json.loads(output)
-            for service in ("econmind-api", "econmind-worker"):
+            for service in ("econmind-api", "econmind-worker", "econmind-v2-worker"):
                 actual = config["services"][service]["environment"]
                 assert {key for key in actual if key.startswith("NEWS_MAP_")} == expected.keys(), "Unexpected map setting"
                 for key, value in expected.items():
                     assert str(actual.get(key)) == value, f"{' + '.join(files)} {label} {service} {key}"
             subprocess.run([sys.executable, str(ROOT / "scripts/check-compose-ports.py")],
                            input=output, text=True, capture_output=True, check=True)
-            print(f"{' + '.join(files)} {label}: {len(expected)} settings x API/worker + ports OK")
+            print(f"{' + '.join(files)} {label}: {len(expected)} settings x API/both workers + ports OK")
 
 
 if __name__ == "__main__":

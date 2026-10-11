@@ -1,0 +1,49 @@
+# Isolated development dependencies, never load deploy/.env or production volumes.
+# docker compose --env-file /dev/null -f compose.local-test.yaml up -d --wait
+name: econmind-v2-local-test
+services:
+  mongodb:
+    image: mongo:8.0@sha256:d0d926f94df099bff534b7ee5b5986458131a22489dfff8664509af0c1e2ca9c
+    command: ['mongod', '--bind_ip_all', '--wiredTigerCacheSizeGB', '0.25']
+    environment:
+      MONGODB_INITDB_DATABASE: econmind_v2_local_test
+    ports:
+      - '127.0.0.1:27218:27017'
+    volumes:
+      - ./mongo-init/02-collections.js:/docker-entrypoint-initdb.d/02-collections.js:ro
+      - ./mongo-init/03-indexes.js:/docker-entrypoint-initdb.d/03-indexes.js:ro
+      - ./mongo-init/05-newsmap-v2.js:/docker-entrypoint-initdb.d/05-newsmap-v2.js:ro
+      - ./scripts:/scripts:ro
+      - local_test_mongo:/data/db
+    mem_limit: 512m
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand({ping:1}).ok"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory', '96mb', '--maxmemory-policy', 'noeviction']
+    ports:
+      - '127.0.0.1:6388:6379'
+    volumes:
+      - local_test_redis:/data
+    mem_limit: 128m
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 20
+  nats:
+    image: nats:2.10-alpine
+    command: ['-js', '-sd', '/data', '-m', '8222']
+    ports:
+      - '127.0.0.1:4233:4222'
+      - '127.0.0.1:8233:8222'
+    volumes:
+      - local_test_nats:/data
+    mem_limit: 128m
+volumes:
+  local_test_mongo:
+  local_test_redis:
+  local_test_nats:
