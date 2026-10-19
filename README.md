@@ -1,6 +1,8 @@
 # EconMind — CNCF 배포 런북
 
 > 이 저장소는 **배포·인프라 런북**이다. 프로젝트 진행 현황·향후 계획·발표 자료는 [DKU-CE-Capstone-Project/econmind-docs](https://github.com/DKU-CE-Capstone-Project/econmind-docs)에 있다.
+>
+> DB 유지보수(관리자 자격증명 회전·낡은 데이터 정리·SSH 터널·운영 `.env` 형상 기록) 절차: [docs/RUNBOOK-20261018-db-maintenance.md](docs/RUNBOOK-20261018-db-maintenance.md) (2026-10-18, 서버 미실행 초안)
 
 ## 뉴스맵 API v2 · 로컬 DB 검증 (2026-10-11)
 
