@@ -3,8 +3,8 @@ title: DB 유지보수 런북 (자격증명 회전 · 낡은 데이터 정리 ·
 project: EconMind (실시간 뉴스 기반 멀티 에이전트 투자 판단 지원 시스템)
 owner: 김건 (kimgeon1104)
 created: 2026-10-18
-updated: 2026-10-18
-status: 초안 · 서버 미실행 (작성 환경에서 GCP 서버·DB에 접속하지 않았다)
+updated: 2026-10-19
+status: 유지보수 절차 실행 전 · 2026-10-19 앱 배포와 별도
 related:
   - README.md「GCP 서버 구성과 병합 후 배포」「MongoDB」절
   - econmind-docs/docs/11-newsmap-prototype-db-design.md
@@ -16,6 +16,8 @@ tags: [runbook, mongodb, security, credentials, ssh-tunnel, env]
 ---
 
 # DB 유지보수 런북 (2026-10-18)
+
+> **2026-10-19 보완:** [앱 업데이트 배포](RELEASE-20261019-gcp.md)는 완료했다. 운영 값은 Decision·PAID 최대 10건·RAG off·critic on이고, 백엔드 `89dfb97`에 MongoDB 일시 초기화 실패 복구가 적용돼 있다. 아래 비밀번호 회전·낡은 자료 정리·터널 자동화 절차는 별도이며 실행하지 않았다. 다음 작성 시점 설명은 2026-10-18 당시 기준이다.
 
 > **이 문서는 손으로 실행하는 절차서다.** 작성 시점에 GCP 서버·홈 서버·MongoDB에 접속하지 않았다.
 > 아래 명령은 저장소 파일(`compose.server.yaml`, `docker-compose.yaml`, `.env.example`, `mongo-init/`, `scripts/`)과
@@ -461,9 +463,9 @@ sudo docker run --rm -it --add-host=host.docker.internal:host-gateway -v "$BK":/
 
 **구조 (재분석 § 3.4, 확정·설정 기준).** `compose.server.yaml`에는 MongoDB 서비스가 없는데 `MONGODB_URI`가 필수(`:15`)이고 `MONGODB_REQUIRED: "true"`이며, `econmind-api` healthcheck가 `/ready`의 `mongodb=='on'`을 요구한다(`:163`). 연결 대상은 홈 서버 DB로 가는 SSH 역방향 터널(`host.docker.internal:27017`, `directConnection=true`)이고 이 터널은 **Compose 밖에서 사람이 유지**한다(§ 5-3).
 
-**코드상 추가 위험 — 기동 순서.** API는 시작 시 `database.ensure_indexes()`(`app/main.py:220-225`)에서 ping이 실패하면 `_disabled = True`로 **프로세스가 살아 있는 동안 MongoDB를 영구 비활성화**한다(`app/database.py:229-235`). 즉 VM 재부팅 등으로 **터널보다 API가 먼저 뜨면, 터널이 복구돼도 `/ready`는 계속 503**이다. Docker의 `restart: unless-stopped`는 unhealthy 컨테이너를 재시작하지 않는다. 반면 v2 워커는 시작 시 `persistence.ready()`가 실패하면 종료되고 재시작 정책으로 다시 뜬다(`app/v2/report_worker.py:61-62`). 실행 중 끊김은 드라이버가 재연결한다.
+**기동 순서와 복구 — 2026-10-19 정정.** 최초 작성 기준 `59bc4b0`은 시작 시 ping 실패 뒤 `_disabled=True`로 DB를 비활성화했다. GCP에 반영한 `89dfb97`은 이 동작을 제거했다. 클라이언트 생성 실패는 5초 cooldown 뒤 재시도하고, `/ready`가 연결 복구 후 미완료 인덱스 초기화를 수행한다. 복구 회귀는 격리 테스트로 확인했고 운영 터널 장애를 강제로 만들지는 않았다. Docker의 `restart: unless-stopped`는 unhealthy 자체를 재시작하지 않으므로 터널·DB·Redis 및 `/ready` 확인은 계속 필요하다.
 
-→ 터널 복구 후 `/ready`가 여전히 503이면: `sudo docker compose -f compose.server.yaml restart econmind-api econmind-worker econmind-v2-worker`
+터널 복구 후에도 `/ready` 503이 지속되면 로그·DB 권한·Redis·인덱스 상태를 먼저 확인한다. 재시작은 원인 확인 뒤 필요한 경우에 사용하며, 이전 버전의 영구 비활성화가 현재 코드에도 남아 있다고 단정하지 않는다.
 
 ### 3.1 상태 확인 (읽기 전용)
 
@@ -587,7 +589,7 @@ sleep 30; systemctl is-active econmind-mongo-tunnel.service
 # GCP: 3.1의 1)·4)·5) 재실행
 ```
 
-**5) GCP 재부팅 대비 (선택)** — 기동 순서 문제(`_disabled`) 때문에, 재부팅 후 터널이 붙은 뒤 `/ready`가 503이면 API를 재시작하는 점검을 운영 메모에 추가한다. 자동화(타이머)는 이 런북 범위 밖이다.
+**5) GCP 재부팅 대비 (선택)** — 터널이 붙은 뒤 `/ready`의 MongoDB·Redis 상태를 확인한다. `89dfb97`은 일시 초기화 실패를 재시도하므로 재시작을 필수 전제로 두지 않는다. 503이 지속되면 위 상태·로그 점검 후 대응한다. 운영 터널의 재부팅·자동 복구 시험과 타이머 추가는 아직 수행하지 않았다.
 
 ### 3.3 장기 대안 비교
 
