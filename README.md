@@ -4,6 +4,10 @@
 >
 > DB 유지보수(관리자 자격증명 회전·낡은 데이터 정리·SSH 터널·운영 `.env` 형상 기록) 절차: [docs/RUNBOOK-20261018-db-maintenance.md](docs/RUNBOOK-20261018-db-maintenance.md) (2026-10-18, 서버 미실행 초안)
 
+## 초기 키워드 맵 설정 전달 추가 (2026-10-25)
+
+초기 키워드 맵 실데이터 API(`GET /api/v1/keywords/map`, Zero-LLM `gemini-embedding-001` 배치 + Kiwi 형태소 추출)에 맞춰 `.env.example`, `compose.server.yaml`, `docker-compose.yaml`에 `KEYWORD_MAP_*` 8개 설정 기본값·override 전달을 추가했다(`KEYWORD_MAP_EMBEDDING_MODEL=gemini-embedding-001`, `KEYWORD_MAP_EMBEDDING_DIMENSIONS=768`, `KEYWORD_MAP_EMBEDDING_TASK_TYPE=SEMANTIC_SIMILARITY`, `KEYWORD_MAP_SIM_THRESHOLD=0.42`, `KEYWORD_MAP_SIM_THRESHOLD_MAX=0.51`, `KEYWORD_MAP_ANISOTROPY_GAIN=0.25`, `KEYWORD_MAP_CANDIDATE_SIZE=50`, `KEYWORD_MAP_CACHE_TTL_SECONDS=180`). 새 비밀키는 필요 없으며 기존 서버 `.env`의 `GOOGLE_API_KEY`와 `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET`을 그대로 사용한다. Kiwi 형태소 분석기는 `econmind-api` 프로세스에서 요청 시 지연 초기화되며 v1/v2 워커 메모리를 추가로 점유하지 않는다.
+
 ## GCP 앱 업데이트 배포 완료 (2026-10-19)
 
 백엔드 **`89dfb97`**(API·v1/v2 워커), 프론트 **`b50e762`**, 배포 체크아웃 **`96ff086`**을 GCP에 반영했다. 기존 `.env`·세션·볼륨과 Decision·PAID 최대 10건·RAG off·critic on을 유지했다. 실제 뉴스 단건 리포트·전략·MongoDB 저장·화면 복원 및 대기 취소를 확인했다. 앱 네 컨테이너의 재시작은 0, API/프론트는 healthy다.
