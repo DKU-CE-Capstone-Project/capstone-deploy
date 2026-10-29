@@ -1,4 +1,5 @@
 x-news-map-env: &news-map-env
+  GEMINI_SERVICE_TIER: ${GEMINI_SERVICE_TIER:-standard}
   V2_STATE_MEMORY: "false"
   PROTOTYPE_TIER: ${PROTOTYPE_TIER:-FREE}
   V2_MAX_MAPS: ${V2_MAX_MAPS:-10}
