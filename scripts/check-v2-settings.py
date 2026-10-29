@@ -39,6 +39,8 @@ def main():
                 "GOOGLE_API_KEY": "fixture", "APP_ORIGIN": "https://example.invalid",
                 "ECONMIND_TEAM_USER": "fixture-team", "ECONMIND_TEAM_PASSWORD_HASH": "fixture-hash"})
     overrides = {key: str(int(value) + 1) for key, value in defaults.items() if value.isdigit()}
+    overrides["V2_BODY_CONCURRENCY"] = "1"  # Sequential extraction is fixed.
+    overrides["V2_BODY_BATCH_TIMEOUT_SECONDS"] = "45"  # The public maximum is 60.
     for files in (["compose.server.yaml"], ["docker-compose.yaml"], ["docker-compose.yaml", "docker-compose.burst.yaml"], ["docker-compose.yaml", "compose.server.yaml"]):
         for label, custom in (("defaults", {}), ("overrides", overrides)):
             command = ["docker", "compose", "--env-file", "/dev/null", "--profile", "*"]
