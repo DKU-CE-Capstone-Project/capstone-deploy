@@ -217,3 +217,27 @@ def test_adc_scopes_support_both_monitoring_and_logging(monkeypatch):
     assert (
         sources.CloudSource().snapshot(1)["usage"]["state"] == "authentication_required"
     )
+
+
+def test_disk_ignores_readonly_snap_loops_but_keeps_root_partition():
+    def series(device, used):
+        return {
+            "metric": {"labels": {"device": device}},
+            "points": [
+                {
+                    "interval": {"endTime": "2026-11-02T09:00:00Z"},
+                    "value": {"doubleValue": used},
+                }
+            ],
+        }
+
+    response = Mock()
+    response.json.return_value = {
+        "timeSeries": [series("/dev/loop0", 100), series("/dev/sda1", 57)]
+    }
+    session = Mock()
+    session.get.return_value = response
+    result = sources.CloudSource().metrics(session)
+    assert [item["device"] for item in result["disk"]["series"]] == ["/dev/sda1"]
+    assert result["disk"]["series"][0]["points"][0]["value"] == 57
+    assert session.get.call_args.kwargs["params"]["pageSize"] == 1000

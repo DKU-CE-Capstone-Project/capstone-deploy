@@ -194,7 +194,7 @@ class CloudSource:
                         "interval.startTime": iso(now() - timedelta(minutes=30)),
                         "interval.endTime": iso(now()),
                         "view": "FULL",
-                        "pageSize": 100,
+                        "pageSize": 1000,
                     },
                     timeout=(3, 8),
                 )
@@ -202,6 +202,11 @@ class CloudSource:
                 data = response.json()
                 series = []
                 for item in data.get("timeSeries", []):
+                    device = item.get("metric", {}).get("labels", {}).get("device", "")
+                    # Snap loop mounts are read-only images and normally report
+                    # 100%; they do not represent writable VM disk capacity.
+                    if key == "disk" and re.fullmatch(r"(?:/dev/)?loop[0-9]+", device):
+                        continue
                     points = []
                     for point in item.get("points", []):
                         value = point.get("value", {})
