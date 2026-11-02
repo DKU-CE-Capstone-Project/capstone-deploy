@@ -1,7 +1,8 @@
 # EconMind 관리자 서비스
 
 `capstone-deploy/admin`에서 독립 실행하는 FastAPI + 정적 UI다. Cloud Run IAM으로 보호하고,
-런타임 서비스 계정에는 대상 프로젝트의 `roles/logging.viewer`, `roles/monitoring.viewer`만 부여한다.
+런타임 서비스 계정에는 대상 프로젝트의 `roles/logging.viewer`, `roles/monitoring.viewer`를 부여한다.
+비용 조회를 연결하면 아래에 설명한 BigQuery 작업 실행 권한과 전용 데이터셋 읽기 권한도 추가한다.
 사용량 로그에 키·본문·프롬프트를 기록하지 않는다. DB 계정·URI는 관리자 서비스에 전달하지 않는다.
 
 메뉴는 운영 현황(`#overview`), 외부 API 사용량(`#external-api`), 서비스 API 요청(`#service-api`),
@@ -56,7 +57,7 @@ python3 -m venv .venv
 ```
 
 환경변수 미설정 시 실제 외부 서비스 호출 없이 설정 대기 화면을 제공한다.
-실제 GCP 조회에는 `environment.example.yaml`의 세 환경변수와 ADC가 필요하다.
+실제 GCP 조회에는 `environment.example.yaml`의 해당 기능 환경변수와 ADC가 필요하다.
 개발 시에도 운영 DB 대신 별도 로컬 stub으로 연결 상태를 검증한다. `BACKEND_STATUS_URL`은
 고정한 HTTPS 주소만 허용하고 리다이렉트하지 않는다. 브라우저가 URL이나 조회 쿼리를 지정할 수 없다.
 
