@@ -1,0 +1,40 @@
+# Replace /etc/google-cloud-ops-agent/config.yaml after reviewing other custom pipelines.
+# Default system logs and host metrics remain enabled.
+logging:
+  receivers:
+    econmind_docker:
+      type: files
+      include_paths: [/var/lib/docker/containers/*/*-json.log]
+      record_log_file_path: true
+      wildcard_refresh_interval: 10s
+  processors:
+    docker_json:
+      type: parse_json
+      time_key: time
+      time_format: "%Y-%m-%dT%H:%M:%S.%LZ"
+    docker_message:
+      type: modify_fields
+      fields:
+        jsonPayload.message:
+          move_from: jsonPayload.log
+    # Parse the application's JSON inside Docker's log field a second time.
+    # Ordinary text log lines remain ordinary messages.
+    usage_json:
+      type: parse_json
+    environment:
+      type: modify_fields
+      fields:
+        labels.deployment_environment:
+          static_value: production
+        labels.log_source:
+          static_value: docker
+  service:
+    pipelines:
+      econmind_docker:
+        receivers: [econmind_docker]
+        processors: [docker_json, docker_message, usage_json, environment]
+metrics:
+  receivers:
+    hostmetrics:
+      type: hostmetrics
+      collection_interval: 60s

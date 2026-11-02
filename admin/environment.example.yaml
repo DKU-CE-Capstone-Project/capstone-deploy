@@ -1,0 +1,5 @@
+GCP_PROJECT_ID: project-cdd9163e-eb08-4280-824
+# Numeric Compute Engine instance ID, not instance name or project number.
+GCP_VM_INSTANCE_ID: REPLACE_WITH_NUMERIC_VM_ID
+BACKEND_STATUS_URL: https://econmind.duckdns.org/internal/admin/status
+# ADMIN_STATUS_TOKEN is injected from Secret Manager; never put its value here.

@@ -9,6 +9,7 @@ x-logging: &logging
     max-file: "3"
 
 x-backend-env: &backend-env
+  ADMIN_STATUS_TOKEN: ${ADMIN_STATUS_TOKEN:-}
   NATS_URL: nats://nats:4222
   REDIS_URL: redis://redis:6379/0
   # The existing server MongoDB connection (including SSH-tunnel deployments) is preserved.

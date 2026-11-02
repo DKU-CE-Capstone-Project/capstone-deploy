@@ -164,6 +164,7 @@ services:
     build: ../backend
     environment: &local-backend-env
       <<: *news-map-env
+      ADMIN_STATUS_TOKEN: ${ADMIN_STATUS_TOKEN:-}
       NATS_URL: nats://nats:4222
       REDIS_URL: redis://redis:6379/0
       DEMO_MODE: "true"

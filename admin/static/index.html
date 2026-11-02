@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>EconMind · 운영 현황</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <aside>
+      <a class="brand" href="/">e<span>●</span> EconMind</a>
+      <div class="workspace">OPERATIONS</div>
+      <a class="nav active" href="/">◫ &nbsp; 운영 현황</a>
+      <div class="aside-bottom">
+        관리자 전용<br /><span>Cloud Monitoring · Cloud Logging</span>
+      </div>
+    </aside>
+    <main>
+      <header>
+        <div>
+          <div class="eyebrow">ECONMIND / OVERVIEW</div>
+          <h1>운영 현황</h1>
+          <p>인프라 상태와 외부 API 사용량을 한곳에서 확인합니다.</p>
+        </div>
+        <div class="controls">
+          <label for="period">조회 기간</label
+          ><select id="period">
+            <option value="1">최근 1시간</option>
+            <option value="24" selected>최근 24시간</option>
+            <option value="168">최근 7일</option></select
+          ><button id="refresh">새로고침 ↻</button>
+        </div>
+      </header>
+      <div class="meta">
+        <span id="project">프로젝트 확인 중</span
+        ><span id="updated" aria-live="polite">조회 중…</span>
+      </div>
+      <div id="notice" class="notice" role="status" hidden></div>
+      <section class="cards" aria-label="연결 및 VM 상태">
+        <article class="card">
+          <div class="card-label">
+            MongoDB 연결 <span class="tag">PING</span>
+          </div>
+          <div id="db" class="metric">—</div>
+          <p id="db-note">연결 상태 조회 중</p>
+        </article>
+        <article class="card">
+          <div class="card-label">VM CPU <span class="tag">30 MIN</span></div>
+          <div id="cpu" class="metric">—</div>
+          <div id="cpu-chart" class="chart"></div>
+          <p id="cpu-note">지표 조회 중</p>
+        </article>
+        <article class="card">
+          <div class="card-label">
+            VM 메모리 <span class="tag">OPS AGENT</span>
+          </div>
+          <div id="memory" class="metric">—</div>
+          <div id="memory-chart" class="chart"></div>
+          <p id="memory-note">지표 조회 중</p>
+        </article>
+        <article class="card">
+          <div class="card-label">
+            VM 디스크 <span class="tag">OPS AGENT</span>
+          </div>
+          <div id="disk" class="metric">—</div>
+          <div id="disk-chart" class="chart"></div>
+          <p id="disk-note">지표 조회 중</p>
+        </article>
+      </section>
+      <section class="panel">
+        <div class="panel-title">
+          <div>
+            <h2>외부 API 사용량</h2>
+            <p>공급자 · 모델 · 작업 단계별로 관측한 호출과 토큰</p>
+          </div>
+          <span id="usage-state" class="pill">조회 중</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>공급자 / 모델</th>
+                <th>작업 / 단계</th>
+                <th>HTTP 요청</th>
+                <th>SDK 호출</th>
+                <th>캐시 재사용</th>
+                <th>오류 / 취소</th>
+                <th>입력 토큰</th>
+                <th>출력 토큰</th>
+              </tr>
+            </thead>
+            <tbody id="usage"></tbody>
+          </table>
+        </div>
+        <div id="usage-empty" class="empty" hidden>
+          수집된 사용량 이벤트가 없습니다.
+        </div>
+        <div class="footnote">
+          SDK 내부 재시도는 HTTP 요청 수에 포함하지 않습니다. 토큰은 응답에서
+          확인된 값만 합산하며 캐시 입력·사고 토큰은 중복 합산하지 않습니다.
+          공급자 청구 금액과 다를 수 있습니다.
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-title">
+          <div>
+            <h2>서비스 API 요청</h2>
+            <p>경로별 요청 수와 오류 응답</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>메서드</th>
+                <th>API 경로</th>
+                <th>요청</th>
+                <th>오류 (4xx · 5xx)</th>
+              </tr>
+            </thead>
+            <tbody id="routes"></tbody>
+          </table>
+        </div>
+        <div id="routes-empty" class="empty" hidden>
+          수집된 API 요청이 없습니다.
+        </div>
+      </section>
+      <footer>
+        DB 표시는 백엔드에서 MongoDB까지의 연결 결과입니다. 호스트 전원 상태를
+        의미하지 않습니다. · 60초마다 자동 갱신
+      </footer>
+    </main>
+  </body>
+</html>

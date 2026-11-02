@@ -60,6 +60,10 @@ def main() -> None:
     assert "basic_auth {" in caddyfile
     assert "{$ECONMIND_TEAM_USER} {$ECONMIND_TEAM_PASSWORD_HASH}" in caddyfile
     assert "header_up -Authorization" in caddyfile
+    assert "handle /internal/admin/status {" in caddyfile
+    status_route = caddyfile.split("handle /internal/admin/status {", 1)[1].split("\n\t}", 1)[0]
+    assert "reverse_proxy econmind-api:8000" in status_route
+    assert "header_up -Authorization" not in status_route
     assert f"set_real_ip_from {caddy_ip};" in nginx
     assert "real_ip_header X-Forwarded-For;" in nginx
     assert f"{caddy_ip} $http_x_forwarded_proto;" in nginx
