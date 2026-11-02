@@ -31,6 +31,7 @@ test('unknown DB and missing usage never render zero or disconnected', () => {
   vm.runInContext('render(data)', context);
   assert.equal(nodes.get('db').textContent, '확인 불가');
   assert.equal(nodes.get('memory').textContent, '—');
+  assert.equal(nodes.get('memory-capacity').textContent, '— GiB / — GiB');
   assert.equal(nodes.get('usage-empty').hidden, false);
   assert.match(nodes.get('notice').textContent, /이벤트가 아직 없습니다/);
 });
@@ -103,4 +104,26 @@ test('history opens on hover or focus and can be dismissed with Escape', () => {
   nodes.get('memory-card').keydown({key: 'Escape', preventDefault() {}});
   assert.equal(nodes.get('memory-history').hidden, true);
   assert.equal(nodes.get('memory-trigger').attributes['aria-expanded'], 'false');
+});
+
+test('GiB capacities follow the displayed device and preserve a real zero usage', () => {
+  const {context, nodes} = setup();
+  context.data = overview();
+  const time = context.data.updated_at;
+  const gib = 2 ** 30;
+  context.data.metrics = {
+    memory: {series: [{points: [{time, value: 0, used_bytes: 0, total_bytes: 8 * gib}]}]},
+    disk: {series: [
+      {device: '/dev/sda1', points: [{time, value: 50, used_bytes: 50 * gib, total_bytes: 100 * gib}]},
+      {device: '/dev/sdb1', points: [{time, value: 80, used_bytes: 4 * gib, total_bytes: 5 * gib}]},
+    ]},
+  };
+  vm.runInContext('render(data)', context);
+  assert.equal(nodes.get('memory-capacity').textContent, '0.00 GiB / 8.00 GiB');
+  assert.equal(nodes.get('disk').textContent, '80.0%');
+  assert.equal(nodes.get('disk-capacity').textContent, '4.00 GiB / 5.00 GiB');
+  assert.match(nodes.get('disk-note').textContent, /\/dev\/sdb1/);
+  delete context.data.metrics.disk.series[1].points[0].total_bytes;
+  vm.runInContext('render(data)', context);
+  assert.equal(nodes.get('disk-capacity').textContent, '— GiB / — GiB');
 });

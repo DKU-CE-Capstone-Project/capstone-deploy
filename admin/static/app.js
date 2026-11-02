@@ -132,19 +132,29 @@ function render(data) {
     const metric = data.metrics[key];
     const all = (metric?.series || []).map((s) => s.points.at(-1));
     const latest = all.filter((point) => point && Number.isFinite(point.value)).sort((a, b) => b.value - a.value)[0];
+    const selected = (metric?.series || []).find(
+      (series) => series.points.at(-1) === latest,
+    );
     $(key).textContent = latest ? `${latest.value.toFixed(1)}%` : "—";
     const gauge = $(key + "-gauge");
     gauge.style.setProperty("--usage", latest ? Math.max(0, Math.min(100, latest.value)) : 0);
     gauge.className = `gauge${latest ? "" : " is-empty"}`;
     const label = `VM ${metricNames[key]} 사용률 ${latest ? latest.value.toFixed(1) + "%" : "확인 불가"}`;
     (key === "disk" ? gauge : $(key + "-trigger")).setAttribute("aria-label", label + (key === "disk" ? "" : ", 최근 30분 그래프 보기"));
+    if (key !== "cpu") {
+      const used = latest?.used_bytes;
+      const total = latest?.total_bytes;
+      const available = Number.isFinite(used) && Number.isFinite(total) && used >= 0 && total > 0 && used <= total;
+      const capacity = $(key + "-capacity");
+      capacity.textContent = available
+        ? `${(used / 2 ** 30).toFixed(2)} GiB / ${(total / 2 ** 30).toFixed(2)} GiB`
+        : "— GiB / — GiB";
+      capacity.setAttribute("aria-label", available ? `사용량 / 전체 용량: ${capacity.textContent}` : "용량 확인 불가");
+    }
     const age = latest ? (Date.now() - Date.parse(latest.time)) / 60000 : 0;
     $(key + "-note").textContent = latest
-      ? `${key === "disk" ? "장치 중 최대 · " : ""}${new Date(latest.time).toLocaleTimeString("ko-KR")}${age > 5 ? " · 지연된 지표" : ""}${metric.complete === false ? " · 일부 장치" : ""}`
+      ? `${key === "disk" ? `${selected?.device || "디스크"} · 장치 중 최대 · ` : ""}${new Date(latest.time).toLocaleTimeString("ko-KR")}${age > 5 ? " · 지연된 지표" : ""}${metric.complete === false ? " · 일부 장치" : ""}`
       : states[metric?.state] || "설정 대기";
-    const selected = (metric?.series || []).find(
-      (series) => series.points.at(-1) === latest,
-    );
     if (key !== "disk") renderHistory(key, selected?.points || [], data.updated_at);
   }
   const usage = data.usage;

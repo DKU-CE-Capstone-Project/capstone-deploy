@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import re
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,54 @@ def now():
 
 def iso(value):
     return value.isoformat().replace("+00:00", "Z")
+
+
+def capacity_series(data, key):
+    """Use complete, simultaneous Linux host states for capacity and utilization."""
+    states = (
+        {"buffered", "cached", "free", "slab", "used"}
+        if key == "memory"
+        else {"free", "reserved", "used"}
+    )
+    observations = {}
+    for item in data.get("timeSeries", []):
+        labels = item.get("metric", {}).get("labels", {})
+        device = labels.get("device", "")
+        state = labels.get("state")
+        if state not in states:
+            continue
+        if key == "disk" and (
+            not device or re.fullmatch(r"(?:/dev/)?loop[0-9]+", device)
+        ):
+            continue
+        for point in item.get("points", []):
+            value = point.get("value", {})
+            raw = value.get("doubleValue", value.get("int64Value"))
+            if raw is not None:
+                timestamp = point["interval"]["endTime"]
+                observations.setdefault((device, timestamp), {})[state] = float(raw)
+    devices = {}
+    for (device, timestamp), values in observations.items():
+        if set(values) != states or any(
+            not math.isfinite(value) or value < 0 for value in values.values()
+        ):
+            continue
+        total = math.fsum(values.values())
+        if total <= 0 or not math.isfinite(total):
+            continue
+        used = values["used"]
+        devices.setdefault(device, []).append(
+            {
+                "time": timestamp,
+                "value": used / total * 100,
+                "used_bytes": used,
+                "total_bytes": total,
+            }
+        )
+    return [
+        {"device": device, "points": sorted(points, key=lambda point: point["time"])}
+        for device, points in devices.items()
+    ]
 
 
 def summarize(entries):
@@ -173,13 +222,13 @@ class CloudSource:
         definitions = {
             "cpu": ("compute.googleapis.com/instance/cpu/utilization", "", 100),
             "memory": (
-                "agent.googleapis.com/memory/percent_used",
-                ' metric.labels.state="used"',
+                "agent.googleapis.com/memory/bytes_used",
+                "",
                 1,
             ),
             "disk": (
-                "agent.googleapis.com/disk/percent_used",
-                ' metric.labels.state="used"',
+                "agent.googleapis.com/disk/bytes_used",
+                "",
                 1,
             ),
         }
@@ -200,34 +249,25 @@ class CloudSource:
                 )
                 response.raise_for_status()
                 data = response.json()
-                series = []
-                for item in data.get("timeSeries", []):
-                    device = item.get("metric", {}).get("labels", {}).get("device", "")
-                    # Snap loop mounts are read-only images and normally report
-                    # 100%; they do not represent writable VM disk capacity.
-                    if key == "disk" and re.fullmatch(r"(?:/dev/)?loop[0-9]+", device):
-                        continue
-                    points = []
-                    for point in item.get("points", []):
-                        value = point.get("value", {})
-                        raw = value.get("doubleValue", value.get("int64Value"))
-                        if raw is not None:
-                            points.append(
-                                {
-                                    "time": point["interval"]["endTime"],
-                                    "value": float(raw) * scale,
-                                }
-                            )
-                    points.sort(key=lambda p: p["time"])
-                    if points:
-                        series.append(
-                            {
-                                "device": item.get("metric", {})
-                                .get("labels", {})
-                                .get("device", ""),
-                                "points": points,
-                            }
-                        )
+                if key in {"memory", "disk"}:
+                    series = capacity_series(data, key)
+                else:
+                    series = []
+                    for item in data.get("timeSeries", []):
+                        points = []
+                        for point in item.get("points", []):
+                            value = point.get("value", {})
+                            raw = value.get("doubleValue", value.get("int64Value"))
+                            if raw is not None:
+                                points.append(
+                                    {
+                                        "time": point["interval"]["endTime"],
+                                        "value": float(raw) * scale,
+                                    }
+                                )
+                        points.sort(key=lambda p: p["time"])
+                        if points:
+                            series.append({"device": "", "points": points})
                 result[key] = {
                     "state": "ok" if series else "no_data",
                     "series": series,

@@ -220,24 +220,98 @@ def test_adc_scopes_support_both_monitoring_and_logging(monkeypatch):
 
 
 def test_disk_ignores_readonly_snap_loops_but_keeps_root_partition():
-    def series(device, used):
+    def series(device, state, value):
         return {
-            "metric": {"labels": {"device": device}},
+            "metric": {"labels": {"device": device, "state": state}},
             "points": [
                 {
                     "interval": {"endTime": "2026-11-02T09:00:00Z"},
-                    "value": {"doubleValue": used},
+                    "value": {"doubleValue": value},
                 }
             ],
         }
 
     response = Mock()
     response.json.return_value = {
-        "timeSeries": [series("/dev/loop0", 100), series("/dev/sda1", 57)]
+        "timeSeries": [
+            series(device, state, value)
+            for device in ["/dev/loop0", "/dev/sda1"]
+            for state, value in {"used": 57, "free": 40, "reserved": 3}.items()
+        ]
     }
     session = Mock()
     session.get.return_value = response
     result = sources.CloudSource().metrics(session)
     assert [item["device"] for item in result["disk"]["series"]] == ["/dev/sda1"]
-    assert result["disk"]["series"][0]["points"][0]["value"] == 57
+    assert result["disk"]["series"][0]["points"][0]["value"] == pytest.approx(57)
     assert session.get.call_args.kwargs["params"]["pageSize"] == 1000
+    assert "disk/bytes_used" in session.get.call_args.kwargs["params"]["filter"]
+    assert "state=" not in session.get.call_args.kwargs["params"]["filter"]
+
+
+def capacity_payload(values, device="", timestamp="2026-11-02T09:00:00Z"):
+    return {
+        "timeSeries": [
+            {
+                "metric": {"labels": {"device": device, "state": state}},
+                "points": [
+                    {
+                        "interval": {"endTime": timestamp},
+                        "value": {"doubleValue": value},
+                    }
+                ],
+            }
+            for state, value in values.items()
+        ]
+    }
+
+
+@pytest.mark.parametrize(
+    ("key", "values", "used", "total"),
+    [
+        (
+            "memory",
+            {"used": 1, "free": 4, "cached": 2, "buffered": 0.5, "slab": 0.5},
+            1,
+            8,
+        ),
+        ("disk", {"used": 27, "free": 20, "reserved": 3}, 27, 50),
+        ("disk", {"used": 0, "free": 5, "reserved": 0}, 0, 5),
+    ],
+)
+def test_capacity_and_percentage_use_all_states_from_the_same_sample(
+    key, values, used, total
+):
+    gib = 2**30
+    payload = capacity_payload(
+        {state: value * gib for state, value in values.items()}, "/dev/sda1"
+    )
+    point = sources.capacity_series(payload, key)[0]["points"][0]
+    assert point["used_bytes"] == used * gib
+    assert point["total_bytes"] == total * gib
+    assert point["value"] == pytest.approx(used / total * 100)
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"used": 1, "free": 2},
+        {"used": 0, "free": 0, "reserved": 0},
+        {"used": -1, "free": 2, "reserved": 0},
+        {"used": float("nan"), "free": 2, "reserved": 0},
+        {"used": 1, "free": float("inf"), "reserved": 0},
+    ],
+)
+def test_missing_or_invalid_capacity_does_not_invent_a_total(values):
+    assert not sources.capacity_series(capacity_payload(values, "/dev/sda1"), "disk")
+
+
+def test_capacity_does_not_mix_observations_from_different_times_or_devices():
+    payload = capacity_payload({"used": 10}, "/dev/sda1")
+    payload["timeSeries"] += capacity_payload(
+        {"free": 90, "reserved": 0}, "/dev/sda1", "2026-11-02T08:59:00Z"
+    )["timeSeries"]
+    payload["timeSeries"] += capacity_payload({"free": 90, "reserved": 0}, "/dev/sdb1")[
+        "timeSeries"
+    ]
+    assert not sources.capacity_series(payload, "disk")

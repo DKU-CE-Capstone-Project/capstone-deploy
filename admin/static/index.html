@@ -71,6 +71,7 @@
             aria-label="VM 메모리 최근 30분 그래프 보기" aria-expanded="false" aria-controls="memory-history">
             <span id="memory-gauge" class="gauge is-empty"><span id="memory" class="metric gauge-value">—</span></span>
           </button>
+          <p id="memory-capacity" class="capacity" title="사용량 / 전체 용량">— GiB / — GiB</p>
           <p id="memory-note">지표 조회 중</p>
           <p class="history-hint">마우스를 올리면 최근 30분 ↗</p>
           <div id="memory-history" class="metric-history" role="region" aria-label="VM 메모리 최근 30분 사용률" hidden>
@@ -90,6 +91,7 @@
           <div id="disk-gauge" class="gauge is-empty" role="img" aria-label="VM 디스크 사용률 조회 중">
             <span id="disk" class="metric gauge-value">—</span>
           </div>
+          <p id="disk-capacity" class="capacity" title="사용량 / 전체 용량">— GiB / — GiB</p>
           <p id="disk-note">지표 조회 중</p>
         </article>
       </section>
