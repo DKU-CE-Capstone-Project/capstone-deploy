@@ -37,6 +37,33 @@ def event_cost(event, diffbot_plan):
         return None, "청구 단위와 호출 계층이 달라 미산정"
     inputs = count(event, "input_tokens")
     outputs = count(event, "output_tokens")
+    if (
+        provider == "gemini"
+        and model == "gemini-embedding-001"
+        and operation in {"embed", "embed_batch"}
+    ):
+        # The synchronous list API has no Batch API discount. Counted inputs
+        # remain separate from provider-reported, post-processing usage.
+        basis = "응답 사용량"
+        if inputs is None:
+            status = event.get("token_count_status")
+            if status == "possible_truncation":
+                return None, "긴 입력 잘림 가능: 청구 토큰 미확인"
+            if status == "timeout":
+                return None, "입력 토큰 계수 시간 초과"
+            if event.get("input_token_source") != "count_tokens" or status != "ok":
+                return None, "입력 토큰 미관측"
+            inputs = count(event, "counted_input_tokens")
+            basis = "countTokens 입력 계수 기준 추정"
+        if (
+            inputs is None
+            or event.get("input_tokens") is not None
+            and count(event, "input_tokens") is None
+        ):
+            return None, "입력 토큰 형식 오류"
+        return Decimal(inputs) * Decimal(
+            "0.15"
+        ) / MILLION, f"임베딩 입력 $0.15 / 1M 토큰 · 동기 요청 · {basis}"
     if inputs is None:
         return None, "입력 토큰 미관측"
     for field in (
@@ -53,11 +80,6 @@ def event_cost(event, diffbot_plan):
     if provider != "anthropic" and cached > inputs:
         return None, "캐시 토큰 범위 불일치"
     if provider == "gemini":
-        if model == "gemini-embedding-001" and operation in {"embed", "embed_batch"}:
-            # embed_batch is synchronous embed_content(list), not the Batch API.
-            return Decimal(inputs) * Decimal(
-                "0.15"
-            ) / MILLION, "임베딩 입력 $0.15 / 1M 토큰 · 동기 요청"
         if model != "gemini-3.5-flash-lite" or operation != "generate":
             return None, "모델·작업 단가 미등록"
         if outputs is None:
@@ -148,6 +170,7 @@ def estimate_external(entries, *, complete=True, diffbot_plan="unknown"):
                 "calls": 0,
                 "priced_calls": 0,
                 "unpriced_calls": 0,
+                "counted_calls": 0,
                 "cache_hits": 0,
             },
         )
@@ -163,6 +186,13 @@ def estimate_external(entries, *, complete=True, diffbot_plan="unknown"):
         else:
             row["amount"] += amount
             row["priced_calls"] += 1
+            if (
+                provider == "gemini"
+                and event.get("model") == "gemini-embedding-001"
+                and count(event, "input_tokens") is None
+                and event.get("input_token_source") == "count_tokens"
+            ):
+                row["counted_calls"] += 1
     rows = []
     for provider, row in sorted(providers.items()):
         rows.append(
@@ -176,6 +206,7 @@ def estimate_external(entries, *, complete=True, diffbot_plan="unknown"):
                 "calls": row["calls"],
                 "priced_calls": row["priced_calls"],
                 "unpriced_calls": row["unpriced_calls"],
+                "counted_calls": row["counted_calls"],
                 "cache_hits": row["cache_hits"],
                 "source_url": SOURCES.get(provider),
             }
@@ -196,11 +227,13 @@ def estimate_external(entries, *, complete=True, diffbot_plan="unknown"):
         "calls": priced + unpriced,
         "priced_calls": priced,
         "unpriced_calls": unpriced,
+        "counted_calls": sum(row["counted_calls"] for row in rows),
         "providers": rows,
         "assumptions": [
             "LLM은 공시 유료 단가 환산이며 무료량·계약 할인·세금·환율은 반영하지 않습니다.",
             "캐시 토큰 미제공 시 일반 입력 단가를 적용합니다. Claude 캐시 쓰기는 현재 코드의 기본 5분 기준입니다.",
             "토큰 미관측 호출은 금액을 만들지 않습니다. SDK 내부 재시도와 계측 이전·누락 사용량은 제외됩니다.",
+            "임베딩 countTokens 계수값은 응답 사용량과 구분한 입력 기준 추정치입니다. 내부 토큰 등 청구량과 다를 수 있으며 긴 입력의 잘림 가능·계수 실패는 미산정입니다. 무료 계수 요청은 외부 추론 호출 수에 더하지 않습니다.",
             "GCP 청구에 포함되는 Gemini 비용과 중복될 수 있으므로 GCP와 API 금액을 합산하지 않습니다.",
         ],
     }

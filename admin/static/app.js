@@ -75,6 +75,13 @@ function cell(row, text, detail) {
 function tokens(row, key) {
   const n = row.token_observations[key];
   const total = row.sdk_calls + row.http_attempts;
+  if (key === "input_tokens" && row.token_observations.counted_input_tokens) {
+    const counted = row.token_observations.counted_input_tokens;
+    const parts = [];
+    if (n) parts.push(`${row.token_sums[key].toLocaleString()} (응답)`);
+    parts.push(`${row.token_sums.counted_input_tokens.toLocaleString()} (계수)`);
+    return `${parts.join(" + ")}${n + counted < total ? " (일부)" : ""}`;
+  }
   return n
     ? `${row.token_sums[key].toLocaleString()}${n < total ? " (일부)" : ""}`
     : "미제공";
@@ -299,7 +306,7 @@ function renderCosts(data) {
   $("external-cost-period").textContent = periodLabels[data.hours] || "선택 기간";
   $("external-cost-total").textContent = money(external.estimated_usd);
   $("external-cost-coverage").textContent = external.state === "ok"
-    ? `${external.priced_calls} / ${external.calls}회 산정${external.unpriced_calls ? ` · 미산정 ${external.unpriced_calls}회` : ""}${external.logs_complete === false ? " · 로그 일부" : ""}`
+    ? `${external.priced_calls} / ${external.calls}회 산정${external.counted_calls ? ` · 입력 계수 ${external.counted_calls}회` : ""}${external.unpriced_calls ? ` · 미산정 ${external.unpriced_calls}회` : ""}${external.logs_complete === false ? " · 로그 일부" : ""}`
     : states[external.state] || "확인 불가";
   $("external-cost-state").textContent = external.state === "ok" ? external.complete ? "예상액" : "일부 산정" : states[external.state] || "확인 불가";
   $("external-cost-rows").replaceChildren();
@@ -308,7 +315,7 @@ function renderCosts(data) {
     cell(tr, row.provider, row.models.join(", "));
     cell(tr, row.calls.toLocaleString(), row.cache_hits ? `앱 캐시 ${row.cache_hits}회 별도` : "");
     cell(tr, money(row.estimated_usd));
-    cell(tr, `${row.priced_calls} / ${row.calls}회`, row.unpriced_calls ? `미산정 ${row.unpriced_calls}회` : "");
+    cell(tr, `${row.priced_calls} / ${row.calls}회`, [row.counted_calls ? `입력 계수 ${row.counted_calls}회` : "", row.unpriced_calls ? `미산정 ${row.unpriced_calls}회` : ""].filter(Boolean).join(" · "));
     const td = document.createElement("td");
     td.textContent = row.basis.join(" · ") || "앱 캐시 재사용: 외부 호출 없음";
     if (row.source_url?.startsWith("https://")) {

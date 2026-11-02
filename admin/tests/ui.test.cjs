@@ -211,6 +211,18 @@ test('cost view distinguishes a zero credited bill, dated snapshots and unpriced
   assert.equal(vm.runInContext('money(.00000001)',context), '< US$0.000001');
 });
 
+test('counted embedding inputs and cost coverage remain distinct from response usage', () => {
+  const {context,nodes} = setup('#cost');
+  context.data = costData();
+  context.data.external.counted_calls = 1;
+  context.data.external.providers[0].counted_calls = 1;
+  vm.runInContext('renderCosts(data)',context);
+  assert.match(nodes.get('external-cost-coverage').textContent, /입력 계수 1회/);
+  assert.match(nodes.get('external-cost-rows').children[0].children[3].children[0].textContent, /입력 계수 1회.*미산정 2회/);
+  context.row = {sdk_calls:4,http_attempts:0,token_observations:{input_tokens:1,counted_input_tokens:1},token_sums:{input_tokens:20,counted_input_tokens:30}};
+  assert.equal(vm.runInContext('tokens(row,"input_tokens")',context), '20 (응답) + 30 (계수) (일부)');
+});
+
 test('leaving a pending cost request immediately refreshes the infrastructure view afterward', async () => {
   let finishCost;
   const {context,nodes,calls} = setup('#cost',url => url.startsWith('/api/costs')

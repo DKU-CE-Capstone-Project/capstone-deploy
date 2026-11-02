@@ -87,6 +87,31 @@ def test_explicit_http_attempts_remain_separate_from_sdk_and_routes():
     assert result["routes"][0]["requests"] == 1
 
 
+def test_embedding_input_counts_remain_separate_from_response_usage():
+    row = sources.summarize(
+        [
+            entry("observed", input_tokens=20),
+            entry("counted", counted_input_tokens=30, token_count_status="ok"),
+            entry(
+                "long",
+                counted_input_tokens=3000,
+                token_count_status="possible_truncation",
+            ),
+            entry("old"),
+            entry(
+                "both",
+                input_tokens=10,
+                counted_input_tokens=50,
+                token_count_status="ok",
+            ),
+        ]
+    )["providers"][0]
+    assert row["sdk_calls"] == 5
+    assert row["token_sums"]["input_tokens"] == 30
+    assert row["token_sums"]["counted_input_tokens"] == 30
+    assert row["token_observations"]["counted_input_tokens"] == 1
+
+
 def test_usage_pagination_and_cap_are_explicit(monkeypatch):
     monkeypatch.setenv("GCP_PROJECT_ID", "fixture-project")
     monkeypatch.setenv("GCP_VM_INSTANCE_ID", "123")

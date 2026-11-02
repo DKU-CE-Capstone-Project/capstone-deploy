@@ -17,6 +17,7 @@ from pricing import estimate_external
 UTC = timezone.utc
 TOKEN_FIELDS = (
     "input_tokens",
+    "counted_input_tokens",
     "output_tokens",
     "cached_input_tokens",
     "thought_tokens",
@@ -137,6 +138,11 @@ def summarize(entries):
                 row["errors"] += event.get("outcome") == "error"
                 row["cancelled"] += event.get("outcome") == "cancelled"
                 for field in TOKEN_FIELDS:
+                    if field == "counted_input_tokens" and (
+                        event.get("token_count_status") != "ok"
+                        or event.get("input_tokens") is not None
+                    ):
+                        continue
                     value = event.get(field)
                     if type(value) is int and value >= 0:
                         row["token_sums"][field] += value

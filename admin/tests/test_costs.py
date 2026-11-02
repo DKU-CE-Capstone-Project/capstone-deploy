@@ -145,6 +145,70 @@ def test_cost_estimates_deduplicate_and_do_not_count_cache_or_service_requests()
     assert pricing.estimate_external([])["state"] == "no_data"
 
 
+def counted_embedding(**fields):
+    return event(
+        model="gemini-embedding-001",
+        operation="embed_batch",
+        input_tokens=None,
+        counted_input_tokens=3000,
+        input_token_source="count_tokens",
+        token_count_status="ok",
+        **fields,
+    )
+
+
+def test_embedding_counted_inputs_are_priced_separately_and_old_events_stay_unknown():
+    entry = counted_embedding()
+    amount, basis = pricing.event_cost(entry, "unknown")
+    assert float(amount) == pytest.approx(0.00045) and "countTokens" in basis
+    rows = [
+        {"jsonPayload": entry},
+        {"jsonPayload": entry},
+        {
+            "jsonPayload": entry
+            | {
+                "event_id": "old",
+                "counted_input_tokens": None,
+                "token_count_status": None,
+            }
+        },
+    ]
+    result = pricing.estimate_external(rows)
+    assert result["estimated_usd"] == pytest.approx(0.00045)
+    assert (
+        result["counted_calls"] == 1
+        and result["unpriced_calls"] == 1
+        and result["calls"] == 2
+    )
+    assert result["providers"][0]["counted_calls"] == 1
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"counted_input_tokens": None},
+        {"counted_input_tokens": -1},
+        {"counted_input_tokens": True},
+        {"token_count_status": "timeout"},
+        {"token_count_status": "unavailable"},
+        {"token_count_status": "possible_truncation"},
+        {"input_token_source": "characters"},
+        {"input_tokens": True},
+        {"operation": "generate"},
+    ],
+)
+def test_embedding_count_failures_or_truncation_do_not_become_cost(fields):
+    assert pricing.event_cost(counted_embedding() | fields, "unknown")[0] is None
+
+
+def test_response_usage_wins_over_separately_counted_embedding_input():
+    result = counted_embedding() | {
+        "input_tokens": 100,
+        "token_count_status": "possible_truncation",
+    }
+    assert float(pricing.event_cost(result, "unknown")[0]) == pytest.approx(0.000015)
+
+
 def billing_result(rows=None, **extra):
     names = [
         "service",
