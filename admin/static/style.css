@@ -424,6 +424,29 @@ td small {
   font-variant-numeric: tabular-nums;
   font-size: clamp(23px, 2.4vw, 31px);
 }
+.cost-periods {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin: 18px 0 20px;
+}
+.cost-periods button {
+  border: 1px solid #dce6e8;
+  background: transparent;
+  color: #536a72;
+  padding: 7px 13px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.cost-periods button.selected {
+  background: #173f49;
+  border-color: #173f49;
+  color: #fff;
+}
+.cost-periods button:focus-visible {
+  outline: 2px solid #258671;
+  outline-offset: 2px;
+}
 .card .cost-detail {
   margin-top: 7px;
   font-size: 11px;

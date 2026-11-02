@@ -156,7 +156,7 @@ test('API tabs expose only their own panel and scope usage warnings and filters'
 test('cost deep link fetches the cost endpoint and restores other tabs correctly', async () => {
   const {context, nodes, calls} = setup('#cost');
   await vm.runInContext('refresh()', context);
-  assert.equal(calls[0], '/api/costs?hours=24');
+  assert.equal(calls[0], '/api/costs?gcp_period=all&external_period=all');
   assert.equal(nodes.get('view-cost').hidden, false);
   assert.equal(nodes.get('data-controls').hidden, false);
   assert.equal(nodes.get('data-meta').hidden, false);
@@ -187,7 +187,7 @@ test('keyboard navigation and hash history keep the selected tab in sync', () =>
 });
 
 function costData() {
-  return {project:'fixture-project',updated_at:new Date().toISOString(),hours:24,
+  return {project:'fixture-project',updated_at:new Date().toISOString(),gcp_period:'all',external_period:'all',
     gcp:{state:'snapshot',automatic_state:'export_pending',currency:'KRW',month:'2026-11',net_cost:0,gross_cost:100,credits:-100,observed_at:'2026-11-02T01:00:00Z',services:[{service:'Compute Engine',currency:'KRW',gross_cost:100,credits:-100,net_cost:0}]},
     external:{state:'ok',complete:false,logs_complete:true,estimated_usd:.001,priced_calls:1,calls:3,unpriced_calls:2,pricing_date:'2026-11-02',assumptions:['fixture rates'],providers:[{provider:'gemini',models:['fixture-model'],calls:3,priced_calls:1,unpriced_calls:2,cache_hits:0,estimated_usd:.001,basis:['fixture'],source_url:'https://ai.google.dev/gemini-api/docs/pricing'}]}};
 }
@@ -239,4 +239,43 @@ test('leaving a pending cost request immediately refreshes the infrastructure vi
   assert.equal(nodes.get('view-overview').hidden,false);
   assert.equal(nodes.get('view-cost').hidden,true);
   assert.equal(nodes.get('db').textContent,'확인 불가');
+});
+
+test('GCP and API periods are independent and measurement baselines stay visible', async () => {
+  const {context,nodes,calls} = setup('#cost', url => {
+    const data=costData();
+    const params=new URLSearchParams(url.split('?')[1]);
+    data.gcp_period=params.get('gcp_period');data.external_period=params.get('external_period');
+    data.gcp.measurement_start='2026-10-31T15:00:00Z';
+    data.external.measurement_start='2026-11-02T09:00:00Z';
+    return {ok:true,json:async()=>data};
+  });
+  await new Promise(setImmediate);
+  nodes.get('external-period-day').click();
+  await new Promise(setImmediate);
+  assert.equal(calls.at(-1),'/api/costs?gcp_period=all&external_period=day');
+  assert.equal(nodes.get('external-cost-period').textContent,'하루');
+  assert.equal(nodes.get('external-period-day').attributes['aria-pressed'],'true');
+  assert.match(nodes.get('gcp-measurement-start').textContent,/측정 시작.*2026.*KST/);
+  assert.match(nodes.get('external-measurement-start').textContent,/측정 시작.*2026.*KST/);
+  assert.equal(nodes.get('usage-period').hidden,true);
+  nodes.get('gcp-period-month').click();
+  await new Promise(setImmediate);
+  assert.equal(calls.at(-1),'/api/costs?gcp_period=month&external_period=day');
+  assert.match(nodes.get('gcp-selected-period').textContent,/한 달/);
+});
+
+test('changing a period while fetching skips the stale result and fetches the selected one', async () => {
+  let resolveFirst;
+  let count=0;
+  const {context,nodes,calls}=setup('#cost',()=> ++count === 1
+    ? new Promise(resolve=>{resolveFirst=resolve;})
+    : {ok:true,json:async()=>({...costData(),external_period:'week'})});
+  nodes.get('external-period-week').click();
+  resolveFirst({ok:true,json:async()=>costData()});
+  await new Promise(setImmediate);
+  assert.equal(calls.length,2);
+  assert.equal(calls[1],'/api/costs?gcp_period=all&external_period=week');
+  assert.equal(vm.runInContext('lastCosts.external_period',context),'week');
+  assert.equal(nodes.get('external-cost-period').textContent,'7일');
 });

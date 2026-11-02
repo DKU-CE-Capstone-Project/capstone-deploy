@@ -267,7 +267,7 @@ def test_billing_query_is_project_filtered_and_counts_credits_without_multiplyin
     assert body["useLegacySql"] is False
     params = {p["name"]: p["parameterValue"]["value"] for p in body["queryParameters"]}
     assert params["project"] == "fixture-project"
-    assert params["month_start"] == "2026-11-01T00:00:00+09:00"
+    assert params["period_start"] == "2026-11-01T00:00:00+09:00"
 
 
 @pytest.mark.parametrize(

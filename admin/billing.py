@@ -1,7 +1,7 @@
 """Bounded, project-filtered Cloud Billing export queries."""
 
 import math
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, DecimalException
 
 import requests
@@ -9,9 +9,11 @@ import requests
 KST = timezone(timedelta(hours=9))
 
 
-def query_billing(session, *, project, table, location, timestamp):
+def query_billing(session, *, project, table, location, timestamp, period_start=None):
     local = timestamp.astimezone(KST)
-    start = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    start = period_start or local.replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
     base = {
         "period_start": start.isoformat(),
         "period_end": timestamp.isoformat(),
@@ -31,7 +33,7 @@ def query_billing(session, *, project, table, location, timestamp):
           COUNT(*) AS records
         FROM `{table}`
         WHERE project.id = @project
-          AND usage_start_time >= @month_start AND usage_start_time < @period_end
+          AND usage_start_time >= @period_start AND usage_start_time < @period_end
         GROUP BY service, currency ORDER BY gross_cost DESC
     """
     parameters = [
@@ -42,7 +44,7 @@ def query_billing(session, *, project, table, location, timestamp):
         }
         for name, kind, value in [
             ("project", "STRING", project),
-            ("month_start", "TIMESTAMP", start.isoformat()),
+            ("period_start", "TIMESTAMP", start.isoformat()),
             ("period_end", "TIMESTAMP", timestamp.isoformat()),
         ]
     ]
@@ -142,6 +144,14 @@ def with_snapshot(result, snapshot, *, project, timestamp):
             KST
         ).strftime("%Y-%m"):
             return result
+        month_start = timestamp.astimezone(KST).replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+        if (
+            result.get("period_start")
+            and datetime.fromisoformat(result["period_start"]) != month_start
+        ):
+            return result
         for key in ("gross_cost", "credits", "net_cost"):
             if not math.isfinite(snapshot[key]):
                 return result
@@ -151,11 +161,19 @@ def with_snapshot(result, snapshot, *, project, timestamp):
             abs_tol=0.000001,
         ):
             return result
-        return snapshot | {
-            "state": "snapshot",
-            "source": "console_snapshot",
-            "automatic_state": result["state"],
-            "report_url": result["report_url"],
-        }
-    except (KeyError, TypeError):
+        return (
+            snapshot
+            | {
+                key: result[key]
+                for key in ("period_start", "period_end")
+                if key in result
+            }
+            | {
+                "state": "snapshot",
+                "source": "console_snapshot",
+                "automatic_state": result["state"],
+                "report_url": result["report_url"],
+            }
+        )
+    except (KeyError, TypeError, ValueError):
         return result

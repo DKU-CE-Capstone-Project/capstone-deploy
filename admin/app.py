@@ -3,6 +3,7 @@
 import asyncio
 import time
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
@@ -64,13 +65,19 @@ async def overview(hours: int = Query(default=24, ge=1, le=168)):
 
 
 @app.get("/api/costs")
-async def costs(hours: int = Query(default=24, ge=1, le=168)):
+async def costs(
+    gcp_period: Literal["all", "day", "week", "month"] = "all",
+    external_period: Literal["all", "day", "week", "month"] = "all",
+):
+    key = (gcp_period, external_period)
     async with cost_lock:
-        cached = cost_cache.get(hours)
+        cached = cost_cache.get(key)
         if cached and time.monotonic() - cached[0] < 300:
             return JSONResponse(cached[1])
         try:
-            data = await asyncio.to_thread(source.cost_snapshot, hours)
+            data = await asyncio.to_thread(
+                source.cost_snapshot, gcp_period, external_period
+            )
         except Exception:  # noqa: BLE001 — do not expose SQL or credentials
             return JSONResponse(
                 {
@@ -78,5 +85,5 @@ async def costs(hours: int = Query(default=24, ge=1, le=168)):
                 },
                 status_code=503,
             )
-        cost_cache[hours] = time.monotonic(), data
+        cost_cache[key] = time.monotonic(), data
         return JSONResponse(data)

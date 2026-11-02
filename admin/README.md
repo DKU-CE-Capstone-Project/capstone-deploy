@@ -7,23 +7,43 @@
 
 메뉴는 운영 현황(`#overview`), 외부 API 사용량(`#external-api`), 서비스 API 요청(`#service-api`),
 비용(`#cost`)으로 나눈다. URL의 탭을 새로고침·뒤로 가기에서 유지하며 키보드 방향키로도 전환한다.
-조회 기간은 두 API 탭과 비용 탭에 표시한다. 비용의 GCP 금액은 이번 달 프로젝트 크레딧 사용액이고,
-외부 API 예상액은 선택한 조회 기간의 관측 로그 기준이다. `/api/costs`는 5분 캐시한다.
+조회 기간은 두 API 사용량 탭에 표시한다. 비용 탭은 GCP와 외부 API 각각
+`누적 / 하루 / 7일 / 한 달`을 선택하며 기본은 누적이다. 하루는 최근 24시간, 7일은 최근 7일,
+한 달은 한국 시간 이번 달 1일부터 현재까지다. 누적은 각 측정 시작 시각부터이며,
+짧은 기간도 측정 시작 이전으로 확장하지 않는다. 화면에 고정 시작 시각과 실제 조회 범위를 표시한다.
+`/api/costs?gcp_period=all&external_period=all`은 조합별 5분 캐시한다.
 GCP 요약과 서비스별 표에는 사용 크레딧만 표시한다. Billing의 음수 credits를 양수 사용액으로
 표현하며, 양수 정정·복원은 음수 사용액으로 반영한다. 미수집과 실제 0원을 구분한다.
 
 ## 비용 데이터 연결
+
+- `GCP_COST_MEASUREMENT_START`와 `API_COST_MEASUREMENT_START`는 시간대가 있는 고정 ISO 시각이다.
+  현재 운영 기준은 GCP `2026-11-01T00:00:00+09:00`, API `2026-11-02T18:00:00+09:00`이다.
+  시작 시각을 바꾸면 누적 정의가 바뀌므로 월이 바뀌거나 재배포한다고 갱신하지 않는다.
+- API 누적 기록은 US의 `econmind_cost_history` 데이터셋에 보관한다. `econmind-cost-history`
+  Logging sink는 대상 VM의 `econmind_usage`만 partitioned table `econmind_docker`로 자동 저장한다.
+  Logging writer identity에 **이 데이터셋만 WRITER**, 관리자 런타임에 **이 데이터셋만 READER**를 부여한다.
+  원문·프롬프트·키를 보관하지 않으며 기존 Logging 보관 기간이 지나도 누적 카운터를 유지한다.
+- sink 생성 이전 관측 기록을 `usage_backfill`(event_time TIMESTAMP, received_at TIMESTAMP,
+  payload JSON, event_time 일별 partition)에 넣고 `usage-history-view.sql`의 대상 프로젝트·VM을
+  치환해 `usage_events` view를 만든다. `GCP_USAGE_HISTORY_VIEW`에 이 전체 view ID를 설정한다.
+  원본과 backfill의 중복은 event_id로 제거하고, 집계는 가격 결정 필드별 그룹 수를 곱해 계산한다.
+  최근 24시간 로그를 함께 조회해 sink 지연을 보완하고 해당 ID는 archive 집계에서 제외한다.
+  조회당 최대 128 MiB와 10,000그룹/10,000최근 로그로 제한하며 상한·권한 오류는 일부 산정으로 표시한다.
+  신규 저장·조회 사용료가 발생할 수 있다. 전체 기록과 달리 계측 이전 사용량은 복원하지 않는다.
 
 - Cloud Billing **표준 사용량 비용**을 전용 BigQuery 데이터셋에 내보낸다. 신규 US/EU 멀티 리전
   내보내기는 이전 달까지 소급하며 초기 데이터에 최대 며칠이 걸릴 수 있다. 런타임에는
   `GCP_BILLING_TABLE`(전체 테이블 ID), `GCP_BILLING_LOCATION`을 설정한다.
 - 관리자 서비스 계정에는 프로젝트의 `roles/bigquery.jobUser`와 **해당 데이터셋만** `READER`
   권한을 부여한다. Billing 계정 관리자 권한이나 서비스 계정 키는 필요하지 않다.
-  쿼리는 대상 `project.id`와 한국 시간 이번 달로 제한하고, 요청당 최대 128 MiB를 스캔한다.
+  쿼리는 대상 `project.id`와 선택한 기간으로 제한하고, 요청당 최대 128 MiB를 스캔한다.
   크레딧은 행마다 합산한 뒤 사용료에 더해 비용이 중복 집계되지 않도록 한다.
 - 첫 내보내기 전에는 검증한 보고서 CSV의 집계를 `GCP_BILLING_SNAPSHOT_JSON`으로 주입할 수 있다.
   이 값은 Git에 넣지 않는다. 화면에 보고서 기준·확인 시각·원 단위 반올림을 표시하고,
   다른 프로젝트·다른 달의 스냅샷은 사용하지 않는다. BigQuery 내역이 도착하면 자동 전환한다.
+  월간 스냅샷을 하루 등 더 짧은 기간의 값으로 재사용하지 않는다. 해당 기간 내보내기가
+  아직 없으면 금액 대신 수집 대기를 표시한다.
   미수집·권한 오류는 0원이 아니다. 계정 공통 요금·세금은 제외되며 확정 청구서와 다를 수 있다.
 
 공개 단가 확인일은 **2026-11-02**다. `pricing.py`는 이벤트별 모델·작업·처리 티어·토큰으로

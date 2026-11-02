@@ -4,6 +4,9 @@ GCP_VM_INSTANCE_ID: REPLACE_WITH_NUMERIC_VM_ID
 BACKEND_STATUS_URL: https://econmind.duckdns.org/internal/admin/status
 GCP_BILLING_TABLE: project-cdd9163e-eb08-4280-824.econmind_billing_export.gcp_billing_export_v1_01D695_A99598_A6E359
 GCP_BILLING_LOCATION: US
+GCP_USAGE_HISTORY_VIEW: project-cdd9163e-eb08-4280-824.econmind_cost_history.usage_events
+GCP_COST_MEASUREMENT_START: "2026-11-01T00:00:00+09:00"
+API_COST_MEASUREMENT_START: "2026-11-02T09:00:00+00:00"
 # User-confirmed free/academic plan. Set unknown if the account plan changes.
 DIFFBOT_COST_PLAN: free_academic
 # ADMIN_STATUS_TOKEN is injected from Secret Manager; never put its value here.

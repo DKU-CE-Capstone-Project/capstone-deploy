@@ -12,6 +12,8 @@ import google.auth
 import requests
 from billing import query_billing, with_snapshot
 from google.auth.transport.requests import AuthorizedSession
+from history import query_history
+from periods import parse_start, window
 from pricing import estimate_external
 
 UTC = timezone.utc
@@ -166,19 +168,21 @@ class CloudSource:
             os.getenv("GCP_BILLING_SNAPSHOT_JSON", "null")
         )
         self.diffbot_plan = os.getenv("DIFFBOT_COST_PLAN", "unknown")
+        self.history_table = os.getenv("GCP_USAGE_HISTORY_VIEW", "")
+        self.gcp_start = parse_start(os.getenv("GCP_COST_MEASUREMENT_START", ""))
+        self.api_start = parse_start(os.getenv("API_COST_MEASUREMENT_START", ""))
         if self.project and not re.fullmatch(r"[a-z][a-z0-9-]{4,62}", self.project):
             raise ValueError("Invalid GCP_PROJECT_ID")
         if self.instance and not self.instance.isdecimal():
             raise ValueError("GCP_VM_INSTANCE_ID must be numeric")
         if self.status_url and not self.status_url.startswith("https://"):
             raise ValueError("BACKEND_STATUS_URL must use HTTPS")
-        if self.billing_table and not re.fullmatch(
-            r"[a-z][a-z0-9-]{4,62}\.[A-Za-z_][A-Za-z0-9_]{0,1023}\.[A-Za-z_][A-Za-z0-9_]{0,1023}",
-            self.billing_table,
-        ):
-            raise ValueError(
-                "GCP_BILLING_TABLE must be a fully qualified BigQuery table"
-            )
+        for table in (self.billing_table, self.history_table):
+            if table and not re.fullmatch(
+                r"[a-z][a-z0-9-]{4,62}\.[A-Za-z_][A-Za-z0-9_]{0,1023}\.[A-Za-z_][A-Za-z0-9_]{0,1023}",
+                table,
+            ):
+                raise ValueError("Expected a fully qualified BigQuery table")
 
     def connection(self):
         if not self.status_url or len(self.status_token) < 32:
@@ -205,6 +209,20 @@ class CloudSource:
 
     def usage(self, session, hours):
         start, end = now() - timedelta(hours=hours), now()
+        entries, complete = self.log_entries(session, start, end)
+        return {
+            "state": "ok" if entries else "no_data",
+            "complete": complete,
+            "start": iso(start),
+            "end": iso(end),
+            "entry_limit": 10000,
+            **summarize(entries),
+            "estimated_costs": estimate_external(
+                entries, complete=complete, diffbot_plan=self.diffbot_plan
+            ),
+        }
+
+    def log_entries(self, session, start, end):
         query = (
             f'resource.type="gce_instance" resource.labels.instance_id="{self.instance}" '
             f'jsonPayload.event_type="econmind_usage" timestamp>="{iso(start)}" timestamp<="{iso(end)}"'
@@ -231,24 +249,61 @@ class CloudSource:
             if not page_token:
                 complete = True
                 break
-        return {
-            "state": "ok" if entries else "no_data",
-            "complete": complete,
-            "start": iso(start),
-            "end": iso(end),
-            "entry_limit": 10000,
-            **summarize(entries),
-            "estimated_costs": estimate_external(
-                entries, complete=complete, diffbot_plan=self.diffbot_plan
-            ),
-        }
+        return entries, complete
 
-    def cost_snapshot(self, hours):
+    def external_costs(self, session, period):
+        end, start = (
+            parse_start(period["period_end"]),
+            parse_start(period["period_start"]),
+        )
+        try:
+            tail, tail_complete = self.log_entries(
+                session, max(start, end - timedelta(days=1)), end
+            )
+        except (requests.RequestException, ValueError):
+            tail, tail_complete = [], False
+        if not self.history_table:
+            return {"state": "not_configured"} | period
+        history = query_history(
+            session,
+            project=self.project,
+            table=self.history_table,
+            location=self.billing_location,
+            start=period["period_start"],
+            end=period["period_end"],
+            exclude_ids=sorted(
+                {
+                    e.get("jsonPayload", {}).get("event_id")
+                    for e in tail
+                    if isinstance(e.get("jsonPayload", {}).get("event_id"), str)
+                }
+            ),
+        )
+        estimate = estimate_external(
+            history["entries"] + tail,
+            grouped=True,
+            complete=history["complete"] and tail_complete,
+            diffbot_plan=self.diffbot_plan,
+        )
+        if (
+            history["state"] == "ok"
+            and estimate["complete"]
+            and not estimate["providers"]
+        ):
+            estimate.update(state="ok", estimated_usd=0)
+        return (
+            estimate
+            | period
+            | {"archive_state": history["state"], "source": "BigQuery + Cloud Logging"}
+        )
+
+    def cost_snapshot(self, gcp_period="all", external_period="all"):
         timestamp = now()
         result = {
             "project": self.project,
             "updated_at": iso(timestamp),
-            "hours": hours,
+            "gcp_period": gcp_period,
+            "external_period": external_period,
             "gcp": {"state": "not_configured"},
             "external": {"state": "not_configured"},
         }
@@ -268,14 +323,17 @@ class CloudSource:
                     table=self.billing_table,
                     location=self.billing_location,
                     timestamp=timestamp,
+                    period_start=parse_start(
+                        window(gcp_period, self.gcp_start, timestamp)["period_start"]
+                    )
+                    if self.gcp_start
+                    else None,
                 )
-                if self.instance:
+                if self.instance and self.api_start:
                     try:
-                        usage = self.usage(session, hours)
-                        result["external"] = usage["estimated_costs"] | {
-                            "period_start": usage["start"],
-                            "period_end": usage["end"],
-                        }
+                        result["external"] = self.external_costs(
+                            session, window(external_period, self.api_start, timestamp)
+                        )
                     except (requests.RequestException, ValueError, ArithmeticError):
                         result["external"] = {"state": "unavailable"}
         except google.auth.exceptions.GoogleAuthError:
@@ -292,6 +350,12 @@ class CloudSource:
             project=self.project,
             timestamp=timestamp,
         )
+        if self.gcp_start:
+            result["gcp"].update(window(gcp_period, self.gcp_start, timestamp))
+        if self.api_start:
+            result["external"].update(
+                window(external_period, self.api_start, timestamp)
+            )
         return result
 
     def metrics(self, session):

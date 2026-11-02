@@ -11,6 +11,22 @@ SOURCES = {
     "naver": "https://developers.naver.com/notice/article/32530",
 }
 MILLION = Decimal(1000000)
+COST_FIELDS = (
+    "provider",
+    "model",
+    "operation",
+    "kind",
+    "service_tier",
+    "input_tokens",
+    "output_tokens",
+    "cached_input_tokens",
+    "cache_creation_tokens",
+    "thought_tokens",
+    "total_tokens",
+    "counted_input_tokens",
+    "input_token_source",
+    "token_count_status",
+)
 
 
 def count(event, key):
@@ -143,7 +159,7 @@ def event_cost(event, diffbot_plan):
     )
 
 
-def estimate_external(entries, *, complete=True, diffbot_plan="unknown"):
+def estimate_external(entries, *, complete=True, diffbot_plan="unknown", grouped=False):
     providers, seen = {}, set()
     for entry in entries:
         event = entry.get("jsonPayload", {}) if isinstance(entry, dict) else {}
@@ -157,6 +173,9 @@ def estimate_external(entries, *, complete=True, diffbot_plan="unknown"):
         if not isinstance(event_id, str) or event_id in seen:
             continue
         seen.add(event_id)
+        weight = entry.get("occurrences", 1) if grouped else 1
+        if type(weight) is not int or weight < 1:
+            raise ValueError("Invalid history group count")
         if event.get("kind") not in {"sdk_call", "http_attempt", "cache_hit"}:
             continue
         provider = event.get("provider") or "unknown"
@@ -176,23 +195,23 @@ def estimate_external(entries, *, complete=True, diffbot_plan="unknown"):
         )
         row["models"].add(event.get("model") or "—")
         if event["kind"] == "cache_hit":
-            row["cache_hits"] += 1
+            row["cache_hits"] += weight
             continue
-        row["calls"] += 1
+        row["calls"] += weight
         amount, basis = event_cost(event, diffbot_plan)
         row["basis"].add(basis)
         if amount is None:
-            row["unpriced_calls"] += 1
+            row["unpriced_calls"] += weight
         else:
-            row["amount"] += amount
-            row["priced_calls"] += 1
+            row["amount"] += amount * weight
+            row["priced_calls"] += weight
             if (
                 provider == "gemini"
                 and event.get("model") == "gemini-embedding-001"
                 and count(event, "input_tokens") is None
                 and event.get("input_token_source") == "count_tokens"
             ):
-                row["counted_calls"] += 1
+                row["counted_calls"] += weight
     rows = []
     for provider, row in sorted(providers.items()):
         rows.append(

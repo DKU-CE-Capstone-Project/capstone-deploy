@@ -22,6 +22,9 @@ def offline(monkeypatch):
         "GCP_BILLING_TABLE",
         "GCP_BILLING_SNAPSHOT_JSON",
         "DIFFBOT_COST_PLAN",
+        "GCP_USAGE_HISTORY_VIEW",
+        "GCP_COST_MEASUREMENT_START",
+        "API_COST_MEASUREMENT_START",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -233,10 +236,10 @@ def test_cost_endpoint_is_bounded_cached_read_only_and_sanitized(monkeypatch):
     assert response.headers["cache-control"] == "no-store"
     client.get("/api/costs")
     assert source.cost_snapshot.call_count == 1
-    assert client.get("/api/costs?hours=169").status_code == 422
+    assert client.get("/api/costs?gcp_period=invalid").status_code == 422
     assert client.post("/api/costs").status_code == 405
     source.cost_snapshot.side_effect = RuntimeError("secret SQL credentials")
-    response = client.get("/api/costs?hours=1")
+    response = client.get("/api/costs?external_period=day")
     assert response.status_code == 503 and "secret" not in response.text
 
 

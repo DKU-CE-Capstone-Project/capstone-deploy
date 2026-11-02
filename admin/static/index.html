@@ -165,20 +165,33 @@
         <div class="cost-summary-grid">
           <article class="card cost-card">
             <div class="card-label">GCP 크레딧 사용액 <span id="gcp-cost-state" class="tag">조회 중</span></div>
+            <div class="cost-periods" role="group" aria-label="GCP 집계 기간">
+              <button type="button" id="gcp-period-all" class="selected" aria-pressed="true">누적</button>
+              <button type="button" id="gcp-period-day" aria-pressed="false">하루</button>
+              <button type="button" id="gcp-period-week" aria-pressed="false">7일</button>
+              <button type="button" id="gcp-period-month" aria-pressed="false">한 달</button>
+            </div>
             <div id="gcp-credits-used" class="metric">—</div>
-            <p>이번 달 프로젝트에 적용된 크레딧</p>
-            <p class="cost-detail">정정·복원을 반영한 사용액</p>
+            <p id="gcp-selected-period">누적 · 프로젝트에 적용된 크레딧</p>
+            <p id="gcp-measurement-start" class="cost-detail">측정 시작 확인 중</p>
           </article>
           <article class="card cost-card">
-            <div class="card-label">외부 API 예상 비용 <span id="external-cost-period" class="tag">최근 24시간</span></div>
+            <div class="card-label">외부 API 예상 비용 <span id="external-cost-period" class="tag">누적</span></div>
+            <div class="cost-periods" role="group" aria-label="외부 API 집계 기간">
+              <button type="button" id="external-period-all" class="selected" aria-pressed="true">누적</button>
+              <button type="button" id="external-period-day" aria-pressed="false">하루</button>
+              <button type="button" id="external-period-week" aria-pressed="false">7일</button>
+              <button type="button" id="external-period-month" aria-pressed="false">한 달</button>
+            </div>
             <div id="external-cost-total" class="metric">—</div>
             <p>관측된 사용량 중 계산 가능한 금액</p>
             <p id="external-cost-coverage" class="cost-detail">조회 중</p>
+            <p id="external-measurement-start" class="cost-detail">측정 시작 확인 중</p>
           </article>
         </div>
         <div class="panel">
           <div class="panel-title">
-            <div><h2>GCP 서비스별 크레딧 사용액</h2><p id="gcp-cost-period">이번 달 크레딧 사용액</p></div>
+            <div><h2>GCP 서비스별 크레딧 사용액</h2><p id="gcp-cost-period">조회 기간 확인 중</p></div>
             <a id="gcp-report-link" class="source-link" href="https://console.cloud.google.com/billing" target="_blank" rel="noopener noreferrer">GCP 보고서 ↗</a>
           </div>
           <div class="table-wrap"><table class="cost-table">
@@ -190,7 +203,7 @@
         </div>
         <div class="panel">
           <div class="panel-title">
-            <div><h2>외부 API별 예상 비용</h2><p>공시 단가 · USD · 관측된 프로젝트 사용량 기준</p></div>
+            <div><h2>외부 API별 예상 비용</h2><p>공시 단가 · USD · 관측된 프로젝트 사용량 기준</p><p id="external-cost-range">조회 기간 확인 중</p></div>
             <span id="external-cost-state" class="pill">조회 중</span>
           </div>
           <div class="table-wrap"><table class="cost-table">
