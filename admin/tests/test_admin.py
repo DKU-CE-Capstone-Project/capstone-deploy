@@ -200,3 +200,20 @@ def test_malformed_status_body_is_unknown_and_does_not_break_other_sources(monke
     response.json.return_value = []
     monkeypatch.setattr(sources.requests, "get", Mock(return_value=response))
     assert sources.CloudSource().connection()["state"] == "unknown"
+
+
+def test_adc_scopes_support_both_monitoring_and_logging(monkeypatch):
+    monkeypatch.setenv("GCP_PROJECT_ID", "fixture-project")
+    monkeypatch.setenv("GCP_VM_INSTANCE_ID", "123")
+
+    def credentials(*, scopes):
+        assert set(scopes) == {
+            "https://www.googleapis.com/auth/monitoring.read",
+            "https://www.googleapis.com/auth/logging.read",
+        }
+        raise sources.google.auth.exceptions.DefaultCredentialsError("fixture")
+
+    monkeypatch.setattr(sources.google.auth, "default", credentials)
+    assert (
+        sources.CloudSource().snapshot(1)["usage"]["state"] == "authentication_required"
+    )

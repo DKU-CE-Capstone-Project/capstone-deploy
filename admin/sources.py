@@ -244,7 +244,10 @@ class CloudSource:
             return result | {"usage": {"state": "not_configured"}, "metrics": {}}
         try:
             credentials, _ = google.auth.default(
-                scopes=["https://www.googleapis.com/auth/cloud-platform.read-only"]
+                scopes=[
+                    "https://www.googleapis.com/auth/monitoring.read",
+                    "https://www.googleapis.com/auth/logging.read",
+                ]
             )
             with AuthorizedSession(credentials) as session:
                 result["metrics"] = self.metrics(session)
