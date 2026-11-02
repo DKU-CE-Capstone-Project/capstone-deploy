@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function setup(hash = '') {
+function setup(hash = '', fetchImpl) {
   class Element {
     constructor() { this.children = []; this.style = {setProperty(name, value) {this[name] = value;}}; this.attributes = {}; this.hidden = false; this.disabled = false; this.value = '24'; }
     append(child) { this.children.push(child); }
@@ -20,7 +20,7 @@ function setup(hash = '') {
   const calls = [];
   const location = {hash};
   const window = {addEventListener(name, fn) {this[name] = fn;}, scrollTo() {}};
-  const context = vm.createContext({document, Date, console, location, window, setInterval() {}, fetch: async (url) => {calls.push(url); return {ok:false};}});
+  const context = vm.createContext({document, Date, console, location, window, setInterval() {}, fetch: async (url) => {calls.push(url); return fetchImpl ? fetchImpl(url) : {ok:false};}});
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../static/app.js'), 'utf8'), context);
   return {context, nodes, calls};
 }
@@ -153,21 +153,20 @@ test('API tabs expose only their own panel and scope usage warnings and filters'
   assert.equal(nodes.get('page-title').textContent, '서비스 API 요청');
 });
 
-test('cost deep link is a placeholder with no data fetch or data controls', async () => {
+test('cost deep link fetches the cost endpoint and restores other tabs correctly', async () => {
   const {context, nodes, calls} = setup('#cost');
   await vm.runInContext('refresh()', context);
-  assert.equal(calls.length, 0);
+  assert.equal(calls[0], '/api/costs?hours=24');
   assert.equal(nodes.get('view-cost').hidden, false);
-  assert.equal(nodes.get('data-controls').hidden, true);
-  assert.equal(nodes.get('data-meta').hidden, true);
-  assert.equal(nodes.get('data-footer').hidden, true);
-  assert.equal(nodes.get('notice').hidden, true);
+  assert.equal(nodes.get('data-controls').hidden, false);
+  assert.equal(nodes.get('data-meta').hidden, false);
+  assert.equal(nodes.get('data-footer').hidden, false);
   assert.equal(nodes.get('page-title').textContent, '비용');
   context.location.hash = '#service-api';
   context.window.hashchange();
   assert.equal(nodes.get('view-cost').hidden, true);
   assert.equal(nodes.get('view-service-api').hidden, false);
-  assert.equal(calls.length, 1);
+  assert.equal(calls[1], '/api/overview?hours=24');
 });
 
 test('keyboard navigation and hash history keep the selected tab in sync', () => {
@@ -185,4 +184,44 @@ test('keyboard navigation and hash history keep the selected tab in sync', () =>
   context.location.hash = '#constructor';
   context.window.hashchange();
   assert.equal(nodes.get('view-overview').hidden, false);
+});
+
+function costData() {
+  return {project:'fixture-project',updated_at:new Date().toISOString(),hours:24,
+    gcp:{state:'snapshot',automatic_state:'export_pending',currency:'KRW',month:'2026-11',net_cost:0,gross_cost:100,credits:-100,observed_at:'2026-11-02T01:00:00Z',services:[{service:'Compute Engine',currency:'KRW',gross_cost:100,credits:-100,net_cost:0}]},
+    external:{state:'ok',complete:false,logs_complete:true,estimated_usd:.001,priced_calls:1,calls:3,unpriced_calls:2,pricing_date:'2026-11-02',assumptions:['fixture rates'],providers:[{provider:'gemini',models:['fixture-model'],calls:3,priced_calls:1,unpriced_calls:2,cache_hits:0,estimated_usd:.001,basis:['fixture'],source_url:'https://ai.google.dev/gemini-api/docs/pricing'}]}};
+}
+
+test('cost view distinguishes a zero credited bill, dated snapshots and unpriced usage', () => {
+  const {context,nodes} = setup('#cost');
+  context.data = costData();
+  vm.runInContext('renderCosts(data)',context);
+  assert.notEqual(nodes.get('gcp-net').textContent, '—');
+  assert.match(nodes.get('gcp-net').textContent, /0/);
+  assert.match(nodes.get('gcp-cost-note').textContent, /보고서 CSV/);
+  assert.match(nodes.get('gcp-cost-note').textContent, /첫 내보내기 대기/);
+  assert.equal(nodes.get('external-cost-state').textContent, '일부 산정');
+  assert.match(nodes.get('external-cost-coverage').textContent, /미산정 2회/);
+  assert.equal(nodes.get('gcp-cost-rows').children.length, 1);
+  context.data.gcp = {state:'export_pending'};
+  context.data.external.estimated_usd = null;
+  vm.runInContext('renderCosts(data)',context);
+  assert.equal(nodes.get('gcp-net').textContent, '—');
+  assert.equal(nodes.get('external-cost-total').textContent, '—');
+  assert.equal(vm.runInContext('money(.00000001)',context), '< US$0.000001');
+});
+
+test('leaving a pending cost request immediately refreshes the infrastructure view afterward', async () => {
+  let finishCost;
+  const {context,nodes,calls} = setup('#cost',url => url.startsWith('/api/costs')
+    ? new Promise(resolve => {finishCost = resolve;})
+    : Promise.resolve({ok:true,json:async () => overview()}));
+  nodes.get('tab-overview').click();
+  assert.equal(calls.length,1);
+  finishCost({ok:true,json:async () => costData()});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls[1],'/api/overview?hours=24');
+  assert.equal(nodes.get('view-overview').hidden,false);
+  assert.equal(nodes.get('view-cost').hidden,true);
+  assert.equal(nodes.get('db').textContent,'확인 불가');
 });

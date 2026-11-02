@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import re
@@ -9,7 +10,9 @@ from datetime import datetime, timedelta, timezone
 
 import google.auth
 import requests
+from billing import query_billing, with_snapshot
 from google.auth.transport.requests import AuthorizedSession
+from pricing import estimate_external
 
 UTC = timezone.utc
 TOKEN_FIELDS = (
@@ -151,12 +154,25 @@ class CloudSource:
         self.instance = os.getenv("GCP_VM_INSTANCE_ID", "")
         self.status_url = os.getenv("BACKEND_STATUS_URL", "")
         self.status_token = os.getenv("ADMIN_STATUS_TOKEN", "")
+        self.billing_table = os.getenv("GCP_BILLING_TABLE", "")
+        self.billing_location = os.getenv("GCP_BILLING_LOCATION", "US")
+        self.billing_snapshot = json.loads(
+            os.getenv("GCP_BILLING_SNAPSHOT_JSON", "null")
+        )
+        self.diffbot_plan = os.getenv("DIFFBOT_COST_PLAN", "unknown")
         if self.project and not re.fullmatch(r"[a-z][a-z0-9-]{4,62}", self.project):
             raise ValueError("Invalid GCP_PROJECT_ID")
         if self.instance and not self.instance.isdecimal():
             raise ValueError("GCP_VM_INSTANCE_ID must be numeric")
         if self.status_url and not self.status_url.startswith("https://"):
             raise ValueError("BACKEND_STATUS_URL must use HTTPS")
+        if self.billing_table and not re.fullmatch(
+            r"[a-z][a-z0-9-]{4,62}\.[A-Za-z_][A-Za-z0-9_]{0,1023}\.[A-Za-z_][A-Za-z0-9_]{0,1023}",
+            self.billing_table,
+        ):
+            raise ValueError(
+                "GCP_BILLING_TABLE must be a fully qualified BigQuery table"
+            )
 
     def connection(self):
         if not self.status_url or len(self.status_token) < 32:
@@ -216,7 +232,61 @@ class CloudSource:
             "end": iso(end),
             "entry_limit": 10000,
             **summarize(entries),
+            "estimated_costs": estimate_external(
+                entries, complete=complete, diffbot_plan=self.diffbot_plan
+            ),
         }
+
+    def cost_snapshot(self, hours):
+        timestamp = now()
+        result = {
+            "project": self.project,
+            "updated_at": iso(timestamp),
+            "hours": hours,
+            "gcp": {"state": "not_configured"},
+            "external": {"state": "not_configured"},
+        }
+        if not self.project:
+            return result
+        try:
+            credentials, _ = google.auth.default(
+                scopes=[
+                    "https://www.googleapis.com/auth/logging.read",
+                    "https://www.googleapis.com/auth/bigquery",
+                ]
+            )
+            with AuthorizedSession(credentials) as session:
+                result["gcp"] = query_billing(
+                    session,
+                    project=self.project,
+                    table=self.billing_table,
+                    location=self.billing_location,
+                    timestamp=timestamp,
+                )
+                if self.instance:
+                    try:
+                        usage = self.usage(session, hours)
+                        result["external"] = usage["estimated_costs"] | {
+                            "period_start": usage["start"],
+                            "period_end": usage["end"],
+                        }
+                    except (requests.RequestException, ValueError, ArithmeticError):
+                        result["external"] = {"state": "unavailable"}
+        except google.auth.exceptions.GoogleAuthError:
+            result.update(
+                gcp={
+                    "state": "authentication_required",
+                    "report_url": f"https://console.cloud.google.com/billing?project={self.project}",
+                },
+                external={"state": "authentication_required"},
+            )
+        result["gcp"] = with_snapshot(
+            result["gcp"],
+            self.billing_snapshot,
+            project=self.project,
+            timestamp=timestamp,
+        )
+        return result
 
     def metrics(self, session):
         definitions = {

@@ -19,6 +19,9 @@ def offline(monkeypatch):
         "GCP_VM_INSTANCE_ID",
         "BACKEND_STATUS_URL",
         "ADMIN_STATUS_TOKEN",
+        "GCP_BILLING_TABLE",
+        "GCP_BILLING_SNAPSHOT_JSON",
+        "DIFFBOT_COST_PLAN",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -27,6 +30,7 @@ def offline(monkeypatch):
 
     monkeypatch.setattr(requests.sessions.Session, "request", reject)
     app.cache.clear()
+    app.cost_cache.clear()
 
 
 def entry(event_id, kind="sdk_call", **fields):
@@ -189,6 +193,43 @@ def test_snapshot_cache_and_error_sanitization(monkeypatch):
     source.snapshot.side_effect = RuntimeError("secret connection URI")
     response = client.get("/api/overview?hours=1")
     assert response.status_code == 503 and "secret" not in response.text
+
+
+def test_cost_endpoint_is_bounded_cached_read_only_and_sanitized(monkeypatch):
+    source = Mock()
+    source.cost_snapshot.return_value = {
+        "gcp": {"state": "export_pending"},
+        "external": {"state": "no_data"},
+    }
+    monkeypatch.setattr(app, "source", source)
+    client = TestClient(app.app)
+    response = client.get("/api/costs")
+    assert response.json()["gcp"]["state"] == "export_pending"
+    assert response.headers["cache-control"] == "no-store"
+    client.get("/api/costs")
+    assert source.cost_snapshot.call_count == 1
+    assert client.get("/api/costs?hours=169").status_code == 422
+    assert client.post("/api/costs").status_code == 405
+    source.cost_snapshot.side_effect = RuntimeError("secret SQL credentials")
+    response = client.get("/api/costs?hours=1")
+    assert response.status_code == 503 and "secret" not in response.text
+
+
+def test_cost_source_uses_only_logging_and_bigquery_scopes(monkeypatch):
+    monkeypatch.setenv("GCP_PROJECT_ID", "fixture-project")
+    monkeypatch.setenv("GCP_VM_INSTANCE_ID", "123")
+
+    def credentials(*, scopes):
+        assert set(scopes) == {
+            "https://www.googleapis.com/auth/logging.read",
+            "https://www.googleapis.com/auth/bigquery",
+        }
+        raise sources.google.auth.exceptions.DefaultCredentialsError("fixture")
+
+    monkeypatch.setattr(sources.google.auth, "default", credentials)
+    result = sources.CloudSource().cost_snapshot(24)
+    assert result["gcp"]["state"] == "authentication_required"
+    assert result["external"]["state"] == "authentication_required"
 
 
 def test_malformed_status_body_is_unknown_and_does_not_break_other_sources(monkeypatch):

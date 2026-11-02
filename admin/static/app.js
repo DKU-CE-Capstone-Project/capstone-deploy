@@ -11,16 +11,26 @@ const pages = {
   overview: { title: "운영 현황", eyebrow: "OVERVIEW", description: "VM 리소스와 DB 연결 상태를 확인합니다." },
   "external-api": { title: "외부 API 사용량", eyebrow: "EXTERNAL API", description: "공급자·모델·작업 단계별 API 호출과 토큰을 확인합니다.", usage: true },
   "service-api": { title: "서비스 API 요청", eyebrow: "SERVICE API", description: "서비스 API 경로별 요청 수와 오류 응답을 확인합니다.", usage: true },
-  cost: { title: "비용", eyebrow: "COST", description: "비용 화면을 준비하고 있습니다." },
+  cost: { title: "비용", eyebrow: "COST", description: "GCP 사용 비용과 외부 API별 예상 비용을 확인합니다.", usage: true },
 };
 let currentTab;
 let hasData = false;
 let usageWarning = "";
 let fetchWarning = "";
+let costFetchWarning = "";
+let lastOverview;
+let lastCosts;
+function renderMeta() {
+  const data = currentTab === "cost" ? lastCosts : lastOverview;
+  $("project").textContent = data?.project
+    ? `${data.project}${currentTab === "cost" ? " · 프로젝트 비용" : ` · VM ${data.instance || "미설정"}`}`
+    : "프로젝트 확인 중";
+  $("updated").textContent = data ? `갱신 ${new Date(data.updated_at).toLocaleString("ko-KR")}` : "조회 중…";
+}
 function renderNotice() {
-  const message = fetchWarning || usageWarning;
+  const message = currentTab === "cost" ? costFetchWarning : fetchWarning || usageWarning;
   $("notice").textContent = message;
-  $("notice").hidden = currentTab === "cost" || !message || (!fetchWarning && currentTab === "overview");
+  $("notice").hidden = !message || (!fetchWarning && currentTab === "overview");
 }
 function showTab(name, updateHash = false) {
   const key = Object.hasOwn(pages, name) ? name : "overview";
@@ -40,15 +50,17 @@ function showTab(name, updateHash = false) {
   $("page-eyebrow").textContent = `ECONMIND / ${page.eyebrow}`;
   document.title = `EconMind · ${page.title}`;
   $("usage-period").hidden = !page.usage;
-  for (const id of ["data-controls", "data-meta", "data-footer"]) $(id).hidden = key === "cost";
-  $("db-disclaimer").hidden = key !== "overview";
+  for (const id of ["data-controls", "data-meta", "data-footer"]) $(id).hidden = false;
+  $("data-footer").textContent = key === "cost" ? "비용은 5분 캐시 · 60초마다 갱신 확인" : "60초마다 자동 갱신";
+  if (key === "overview") $("data-footer").textContent = "DB 표시는 백엔드에서 MongoDB까지의 연결 결과입니다. 호스트 전원 상태를 의미하지 않습니다. · 60초마다 자동 갱신";
   if (updateHash && location.hash !== "#" + key) location.hash = "#" + key;
   if (changed) {
     for (const metric of ["cpu", "memory"]) historyOpen(metric, false);
     window.scrollTo(0, 0);
   }
   renderNotice();
-  if (key !== "cost" && (changed || !hasData)) refresh();
+  renderMeta();
+  if (changed || !(key === "cost" ? lastCosts : hasData)) refresh();
 }
 function cell(row, text, detail) {
   const td = document.createElement("td");
@@ -155,11 +167,8 @@ function bindHistory(key) {
 function render(data) {
   hasData = true;
   fetchWarning = "";
-  $("project").textContent = data.project
-    ? `${data.project} · VM ${data.instance || "미설정"}`
-    : "GCP 프로젝트 설정 대기";
-  $("updated").textContent =
-    `갱신 ${new Date(data.updated_at).toLocaleString("ko-KR")}`;
+  lastOverview = data;
+  renderMeta();
   const db = data.connection;
   const names = {
     connected: "연결됨",
@@ -247,23 +256,98 @@ function render(data) {
   }
   $("routes-empty").hidden = !!usage.routes?.length;
 }
+function money(value, currency = "USD") {
+  if (!Number.isFinite(value)) return "—";
+  if (currency === "USD" && value > 0 && value < 0.000001) return "< US$0.000001";
+  return new Intl.NumberFormat("ko-KR", {style: "currency", currency, minimumFractionDigits: currency === "KRW" ? 0 : 2, maximumFractionDigits: currency === "USD" ? 6 : 2}).format(value);
+}
+function stamp(value) {
+  return value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString("ko-KR") : "미제공";
+}
+function renderCosts(data) {
+  lastCosts = data;
+  costFetchWarning = "";
+  renderMeta();
+  renderNotice();
+  const gcp = data.gcp || {};
+  const external = data.external || {};
+  const billingStates = {ok: "BigQuery", snapshot: "보고서 기준", export_pending: "첫 내보내기 대기", no_data: "내역 수집 대기", query_pending: "집계 중", permission_required: "조회 권한 필요", not_configured: "연결 대기", authentication_required: "GCP 인증 필요", unavailable: "조회 실패", mixed_currency: "통화별 확인 필요"};
+  $("gcp-cost-state").textContent = billingStates[gcp.state] || "확인 불가";
+  $("gcp-net").textContent = money(gcp.net_cost, gcp.currency || "KRW");
+  $("gcp-cost-breakdown").textContent = Number.isFinite(gcp.gross_cost)
+    ? `사용료 ${money(gcp.gross_cost, gcp.currency)} · 크레딧 ${money(gcp.credits, gcp.currency)}`
+    : "비용 데이터가 준비되면 표시합니다.";
+  $("gcp-cost-period").textContent = `${gcp.month || "이번 달"} · 프로젝트 사용료 · 세금 별도`;
+  $("gcp-report-link").href = gcp.report_url || "https://console.cloud.google.com/billing";
+  $("gcp-cost-rows").replaceChildren();
+  for (const row of gcp.services || []) {
+    const tr = document.createElement("tr");
+    cell(tr, row.service);
+    cell(tr, money(row.gross_cost, row.currency));
+    cell(tr, money(row.credits, row.currency));
+    cell(tr, money(row.net_cost, row.currency));
+    $("gcp-cost-rows").append(tr);
+  }
+  $("gcp-cost-empty").hidden = !!gcp.services?.length;
+  $("gcp-cost-empty").textContent = billingStates[gcp.state] || "비용 데이터가 없습니다.";
+  $("gcp-cost-note").textContent = gcp.state === "snapshot"
+    ? `Cloud Billing 보고서 CSV · 확인 ${stamp(gcp.observed_at)} · 원 단위 반올림 표시값입니다. 자동 연결: ${billingStates[gcp.automatic_state] || "수집 대기"}. 내보내기가 도착하면 BigQuery 데이터로 자동 전환합니다.`
+    : gcp.state === "ok"
+      ? `BigQuery · 한국 시간 사용월 기준 · 사용량 반영 ${stamp(gcp.data_through)} · 내보내기 ${stamp(gcp.last_export)}. 수집 지연·소급 반영으로 금액이 변경될 수 있습니다. 계정 공통 요금·세금은 제외합니다.`
+      : "첫 Billing 내보내기는 지연될 수 있습니다. 데이터가 없거나 조회하지 못한 경우 0원으로 표시하지 않습니다.";
+  const periodLabels = {1: "최근 1시간", 24: "최근 24시간", 168: "최근 7일"};
+  $("external-cost-period").textContent = periodLabels[data.hours] || "선택 기간";
+  $("external-cost-total").textContent = money(external.estimated_usd);
+  $("external-cost-coverage").textContent = external.state === "ok"
+    ? `${external.priced_calls} / ${external.calls}회 산정${external.unpriced_calls ? ` · 미산정 ${external.unpriced_calls}회` : ""}${external.logs_complete === false ? " · 로그 일부" : ""}`
+    : states[external.state] || "확인 불가";
+  $("external-cost-state").textContent = external.state === "ok" ? external.complete ? "예상액" : "일부 산정" : states[external.state] || "확인 불가";
+  $("external-cost-rows").replaceChildren();
+  for (const row of external.providers || []) {
+    const tr = document.createElement("tr");
+    cell(tr, row.provider, row.models.join(", "));
+    cell(tr, row.calls.toLocaleString(), row.cache_hits ? `앱 캐시 ${row.cache_hits}회 별도` : "");
+    cell(tr, money(row.estimated_usd));
+    cell(tr, `${row.priced_calls} / ${row.calls}회`, row.unpriced_calls ? `미산정 ${row.unpriced_calls}회` : "");
+    const td = document.createElement("td");
+    td.textContent = row.basis.join(" · ") || "앱 캐시 재사용: 외부 호출 없음";
+    if (row.source_url?.startsWith("https://")) {
+      const link = document.createElement("a");
+      link.className = "source-link";
+      link.href = row.source_url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = " 공식 요금 ↗";
+      td.append(link);
+    }
+    tr.append(td);
+    $("external-cost-rows").append(tr);
+  }
+  $("external-cost-empty").hidden = !!external.providers?.length;
+  $("external-cost-empty").textContent = external.state === "no_data" ? "관측된 API 사용량이 없습니다." : states[external.state] || "확인 불가";
+  $("external-cost-note").textContent = `단가 확인 ${external.pricing_date || "—"} · ${(external.assumptions || []).join(" ")}`;
+}
 async function refresh() {
   const button = $("refresh");
-  if (currentTab === "cost" || button.disabled) return;
+  if (button.disabled) return;
+  const isCost = currentTab === "cost";
+  const hours = $("period").value;
   button.disabled = true;
   try {
-    const response = await fetch(`/api/overview?hours=${$("period").value}`, {
+    const response = await fetch(`/api/${isCost ? "costs" : "overview"}?hours=${hours}`, {
       cache: "no-store",
     });
     if (!response.ok) throw Error();
-    render(await response.json());
+    const data = await response.json();
+    if (isCost) renderCosts(data); else render(data);
   } catch {
-    fetchWarning =
-      "조회하지 못했습니다. 마지막 표시 값은 이전 조회 결과입니다. 다시 시도해 주세요.";
+    const message = "조회하지 못했습니다. 마지막 표시 값은 이전 조회 결과입니다. 다시 시도해 주세요.";
+    if (isCost) costFetchWarning = message; else fetchWarning = message;
     renderNotice();
     $("updated").textContent = "갱신 실패";
   } finally {
     button.disabled = false;
+    if ((currentTab === "cost") !== isCost || $("period").value !== hours) refresh();
   }
 }
 $("refresh").addEventListener("click", refresh);

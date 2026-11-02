@@ -6,7 +6,44 @@
 
 메뉴는 운영 현황(`#overview`), 외부 API 사용량(`#external-api`), 서비스 API 요청(`#service-api`),
 비용(`#cost`)으로 나눈다. URL의 탭을 새로고침·뒤로 가기에서 유지하며 키보드 방향키로도 전환한다.
-조회 기간은 두 API 탭에 표시한다. 비용은 `준비 중` 화면만 제공하고 해당 탭에서는 자동 조회를 멈춘다.
+조회 기간은 두 API 탭과 비용 탭에 표시한다. 비용의 GCP 금액은 이번 달 프로젝트 사용료이고,
+외부 API 예상액은 선택한 조회 기간의 관측 로그 기준이다. `/api/costs`는 5분 캐시한다.
+
+## 비용 데이터 연결
+
+- Cloud Billing **표준 사용량 비용**을 전용 BigQuery 데이터셋에 내보낸다. 신규 US/EU 멀티 리전
+  내보내기는 이전 달까지 소급하며 초기 데이터에 최대 며칠이 걸릴 수 있다. 런타임에는
+  `GCP_BILLING_TABLE`(전체 테이블 ID), `GCP_BILLING_LOCATION`을 설정한다.
+- 관리자 서비스 계정에는 프로젝트의 `roles/bigquery.jobUser`와 **해당 데이터셋만** `READER`
+  권한을 부여한다. Billing 계정 관리자 권한이나 서비스 계정 키는 필요하지 않다.
+  쿼리는 대상 `project.id`와 한국 시간 이번 달로 제한하고, 요청당 최대 128 MiB를 스캔한다.
+  크레딧은 행마다 합산한 뒤 사용료에 더해 비용이 중복 집계되지 않도록 한다.
+- 첫 내보내기 전에는 검증한 보고서 CSV의 집계를 `GCP_BILLING_SNAPSHOT_JSON`으로 주입할 수 있다.
+  이 값은 Git에 넣지 않는다. 화면에 보고서 기준·확인 시각·원 단위 반올림을 표시하고,
+  다른 프로젝트·다른 달의 스냅샷은 사용하지 않는다. BigQuery 내역이 도착하면 자동 전환한다.
+  미수집·권한 오류는 0원이 아니다. 계정 공통 요금·세금은 제외되며 확정 청구서와 다를 수 있다.
+
+공개 단가 확인일은 **2026-11-02**다. `pricing.py`는 이벤트별 모델·작업·처리 티어·토큰으로
+USD 예상액을 계산하며, 관측되지 않은 토큰이나 등록되지 않은 모델은 미산정으로 남긴다.
+
+- [Gemini 요금](https://ai.google.dev/gemini-api/docs/pricing): `gemini-3.5-flash-lite` Standard
+  입력/출력·사고/캐시 $0.30/$2.50/$0.03, Flex $0.15/$1.25/$0.02 (1M 토큰당).
+  입력의 캐시 부분은 분리하고 출력·사고 토큰은 한 번만 더한다. `gemini-embedding-001`은
+  입력 $0.15/1M이며 동기 `embed_batch`를 Batch API 할인으로 처리하지 않는다.
+- [OpenAI Decisions 요금](https://developers.openai.com/api/docs/guides/decisions#pricing-and-availability):
+  `gpt-6-luna` 입력 $0.10/1M, 출력 무료. 캐시 읽기 $0.01/1M, 기본 쓰기 $0.125/1M이며
+  272K 초과 입력은 장문 배율을 적용한다. 캐시 세부정보가 없으면 일반 입력 단가를 사용한다.
+- [Claude 요금](https://platform.claude.com/docs/en/about-claude/pricing): `claude-opus-4-8`
+  입력 $5/출력 $25, 캐시 읽기 $0.50/현재 코드의 기본 5분 쓰기 $6.25 (1M 토큰당).
+- [Diffbot 요금](https://www.diffbot.com/pricing/): 사용자가 확인한 무료·학생 요금제는
+  `DIFFBOT_COST_PLAN=free_academic`으로 적용한다. 계정별 한도·다른 프로젝트 사용량은 제외한다.
+  요금제가 바뀌면 `unknown`으로 설정하고 새 계약 기준을 반영한다.
+- [NAVER 검색 API 정책](https://developers.naver.com/notice/article/32530): 현재 사용하는
+  기존 검색 API의 기본 무료 정책을 적용한다.
+
+앱 캐시 재사용에는 외부 호출 비용을 더하지 않는다. LLM 무료량·계약 할인·세금·환율과
+SDK 내부 재시도·계측 이전/누락 사용량은 반영하지 않는다. 단가 확인일과 미산정 건수를 표시하며,
+GCP 청구에 Gemini 비용이 포함될 수 있으므로 GCP 금액과 API 예상액을 합산하지 않는다.
 
 ## 로컬 실행과 테스트
 

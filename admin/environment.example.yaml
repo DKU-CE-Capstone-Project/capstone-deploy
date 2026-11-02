@@ -2,4 +2,8 @@ GCP_PROJECT_ID: project-cdd9163e-eb08-4280-824
 # Numeric Compute Engine instance ID, not instance name or project number.
 GCP_VM_INSTANCE_ID: REPLACE_WITH_NUMERIC_VM_ID
 BACKEND_STATUS_URL: https://econmind.duckdns.org/internal/admin/status
+GCP_BILLING_TABLE: project-cdd9163e-eb08-4280-824.econmind_billing_export.gcp_billing_export_v1_01D695_A99598_A6E359
+GCP_BILLING_LOCATION: US
+# User-confirmed free/academic plan. Set unknown if the account plan changes.
+DIFFBOT_COST_PLAN: free_academic
 # ADMIN_STATUS_TOKEN is injected from Secret Manager; never put its value here.

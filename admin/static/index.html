@@ -161,12 +161,48 @@
           수집된 API 요청이 없습니다.
         </div>
       </section>
-      <section id="view-cost" class="panel cost-placeholder" role="tabpanel" aria-labelledby="tab-cost" tabindex="0" hidden>
-        <span class="cost-symbol" aria-hidden="true">₩</span>
-        <h2>준비 중</h2>
+      <section id="view-cost" role="tabpanel" aria-labelledby="tab-cost" tabindex="0" hidden>
+        <div class="cost-summary-grid">
+          <article class="card cost-card">
+            <div class="card-label">GCP 이번 달 <span id="gcp-cost-state" class="tag">조회 중</span></div>
+            <div id="gcp-net" class="metric">—</div>
+            <p>크레딧 적용 후 프로젝트 사용료</p>
+            <p id="gcp-cost-breakdown" class="cost-detail">사용료 · 크레딧 조회 중</p>
+          </article>
+          <article class="card cost-card">
+            <div class="card-label">외부 API 예상 비용 <span id="external-cost-period" class="tag">최근 24시간</span></div>
+            <div id="external-cost-total" class="metric">—</div>
+            <p>관측된 사용량 중 계산 가능한 금액</p>
+            <p id="external-cost-coverage" class="cost-detail">조회 중</p>
+          </article>
+        </div>
+        <div class="panel">
+          <div class="panel-title">
+            <div><h2>GCP 서비스별 비용</h2><p id="gcp-cost-period">이번 달 사용료</p></div>
+            <a id="gcp-report-link" class="source-link" href="https://console.cloud.google.com/billing" target="_blank" rel="noopener noreferrer">GCP 보고서 ↗</a>
+          </div>
+          <div class="table-wrap"><table class="cost-table">
+            <thead><tr><th>서비스</th><th>크레딧 적용 전</th><th>크레딧</th><th>적용 후</th></tr></thead>
+            <tbody id="gcp-cost-rows"></tbody>
+          </table></div>
+          <div id="gcp-cost-empty" class="empty" hidden>비용 데이터 조회 중</div>
+          <div id="gcp-cost-note" class="footnote">Cloud Billing 데이터를 조회합니다.</div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">
+            <div><h2>외부 API별 예상 비용</h2><p>공시 단가 · USD · 관측된 프로젝트 사용량 기준</p></div>
+            <span id="external-cost-state" class="pill">조회 중</span>
+          </div>
+          <div class="table-wrap"><table class="cost-table">
+            <thead><tr><th>공급자 / 모델</th><th>관측 호출</th><th>예상 비용</th><th>산정 범위</th><th>계산 기준</th></tr></thead>
+            <tbody id="external-cost-rows"></tbody>
+          </table></div>
+          <div id="external-cost-empty" class="empty" hidden>관측된 API 사용량이 없습니다.</div>
+          <div id="external-cost-note" class="footnote">관측된 사용량에 공개 단가를 적용합니다.</div>
+        </div>
       </section>
       <footer id="data-footer">
-        <span id="db-disclaimer">DB 표시는 백엔드에서 MongoDB까지의 연결 결과입니다. 호스트 전원 상태를 의미하지 않습니다. · </span>60초마다 자동 갱신
+        DB 표시는 백엔드에서 MongoDB까지의 연결 결과입니다. 호스트 전원 상태를 의미하지 않습니다. · 60초마다 자동 갱신
       </footer>
     </main>
   </body>
