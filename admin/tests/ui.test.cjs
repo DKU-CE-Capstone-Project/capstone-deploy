@@ -192,12 +192,13 @@ function costData() {
     external:{state:'ok',complete:false,logs_complete:true,estimated_usd:.001,priced_calls:1,calls:3,unpriced_calls:2,pricing_date:'2026-11-02',assumptions:['fixture rates'],providers:[{provider:'gemini',models:['fixture-model'],calls:3,priced_calls:1,unpriced_calls:2,cache_hits:0,estimated_usd:.001,basis:['fixture'],source_url:'https://ai.google.dev/gemini-api/docs/pricing'}]}};
 }
 
-test('cost view distinguishes a zero credited bill, dated snapshots and unpriced usage', () => {
+test('cost view shows credit consumption, dated snapshots and unpriced usage', () => {
   const {context,nodes} = setup('#cost');
   context.data = costData();
   vm.runInContext('renderCosts(data)',context);
-  assert.notEqual(nodes.get('gcp-net').textContent, '—');
-  assert.match(nodes.get('gcp-net').textContent, /0/);
+  assert.equal(nodes.get('gcp-credits-used').textContent, vm.runInContext('money(100,"KRW")',context));
+  assert.equal(nodes.get('gcp-cost-rows').children[0].children.length, 2);
+  assert.equal(nodes.get('gcp-cost-rows').children[0].children[1].textContent, nodes.get('gcp-credits-used').textContent);
   assert.match(nodes.get('gcp-cost-note').textContent, /보고서 CSV/);
   assert.match(nodes.get('gcp-cost-note').textContent, /첫 내보내기 대기/);
   assert.equal(nodes.get('external-cost-state').textContent, '일부 산정');
@@ -206,9 +207,11 @@ test('cost view distinguishes a zero credited bill, dated snapshots and unpriced
   context.data.gcp = {state:'export_pending'};
   context.data.external.estimated_usd = null;
   vm.runInContext('renderCosts(data)',context);
-  assert.equal(nodes.get('gcp-net').textContent, '—');
+  assert.equal(nodes.get('gcp-credits-used').textContent, '—');
   assert.equal(nodes.get('external-cost-total').textContent, '—');
   assert.equal(vm.runInContext('money(.00000001)',context), '< US$0.000001');
+  assert.equal(vm.runInContext('creditsUsed(0,"KRW")',context), vm.runInContext('money(0,"KRW")',context));
+  assert.equal(vm.runInContext('creditsUsed(20,"KRW")',context), vm.runInContext('money(-20,"KRW")',context));
 });
 
 test('counted embedding inputs and cost coverage remain distinct from response usage', () => {

@@ -164,10 +164,10 @@
       <section id="view-cost" role="tabpanel" aria-labelledby="tab-cost" tabindex="0" hidden>
         <div class="cost-summary-grid">
           <article class="card cost-card">
-            <div class="card-label">GCP 이번 달 <span id="gcp-cost-state" class="tag">조회 중</span></div>
-            <div id="gcp-net" class="metric">—</div>
-            <p>크레딧 적용 후 프로젝트 사용료</p>
-            <p id="gcp-cost-breakdown" class="cost-detail">사용료 · 크레딧 조회 중</p>
+            <div class="card-label">GCP 크레딧 사용액 <span id="gcp-cost-state" class="tag">조회 중</span></div>
+            <div id="gcp-credits-used" class="metric">—</div>
+            <p>이번 달 프로젝트에 적용된 크레딧</p>
+            <p class="cost-detail">정정·복원을 반영한 사용액</p>
           </article>
           <article class="card cost-card">
             <div class="card-label">외부 API 예상 비용 <span id="external-cost-period" class="tag">최근 24시간</span></div>
@@ -178,14 +178,14 @@
         </div>
         <div class="panel">
           <div class="panel-title">
-            <div><h2>GCP 서비스별 비용</h2><p id="gcp-cost-period">이번 달 사용료</p></div>
+            <div><h2>GCP 서비스별 크레딧 사용액</h2><p id="gcp-cost-period">이번 달 크레딧 사용액</p></div>
             <a id="gcp-report-link" class="source-link" href="https://console.cloud.google.com/billing" target="_blank" rel="noopener noreferrer">GCP 보고서 ↗</a>
           </div>
           <div class="table-wrap"><table class="cost-table">
-            <thead><tr><th>서비스</th><th>크레딧 적용 전</th><th>크레딧</th><th>적용 후</th></tr></thead>
+            <thead><tr><th>서비스</th><th>사용 크레딧</th></tr></thead>
             <tbody id="gcp-cost-rows"></tbody>
           </table></div>
-          <div id="gcp-cost-empty" class="empty" hidden>비용 데이터 조회 중</div>
+          <div id="gcp-cost-empty" class="empty" hidden>크레딧 데이터 조회 중</div>
           <div id="gcp-cost-note" class="footnote">Cloud Billing 데이터를 조회합니다.</div>
         </div>
         <div class="panel">

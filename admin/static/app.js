@@ -11,7 +11,7 @@ const pages = {
   overview: { title: "운영 현황", eyebrow: "OVERVIEW", description: "VM 리소스와 DB 연결 상태를 확인합니다." },
   "external-api": { title: "외부 API 사용량", eyebrow: "EXTERNAL API", description: "공급자·모델·작업 단계별 API 호출과 토큰을 확인합니다.", usage: true },
   "service-api": { title: "서비스 API 요청", eyebrow: "SERVICE API", description: "서비스 API 경로별 요청 수와 오류 응답을 확인합니다.", usage: true },
-  cost: { title: "비용", eyebrow: "COST", description: "GCP 사용 비용과 외부 API별 예상 비용을 확인합니다.", usage: true },
+  cost: { title: "비용", eyebrow: "COST", description: "GCP 크레딧 사용액과 외부 API별 예상 비용을 확인합니다.", usage: true },
 };
 let currentTab;
 let hasData = false;
@@ -23,7 +23,7 @@ let lastCosts;
 function renderMeta() {
   const data = currentTab === "cost" ? lastCosts : lastOverview;
   $("project").textContent = data?.project
-    ? `${data.project}${currentTab === "cost" ? " · 프로젝트 비용" : ` · VM ${data.instance || "미설정"}`}`
+    ? `${data.project}${currentTab === "cost" ? " · 프로젝트 크레딧·API 비용" : ` · VM ${data.instance || "미설정"}`}`
     : "프로젝트 확인 중";
   $("updated").textContent = data ? `갱신 ${new Date(data.updated_at).toLocaleString("ko-KR")}` : "조회 중…";
 }
@@ -271,6 +271,9 @@ function money(value, currency = "USD") {
 function stamp(value) {
   return value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString("ko-KR") : "미제공";
 }
+function creditsUsed(value, currency) {
+  return money(Number.isFinite(value) ? value === 0 ? 0 : -value : undefined, currency);
+}
 function renderCosts(data) {
   lastCosts = data;
   costFetchWarning = "";
@@ -280,23 +283,18 @@ function renderCosts(data) {
   const external = data.external || {};
   const billingStates = {ok: "BigQuery", snapshot: "보고서 기준", export_pending: "첫 내보내기 대기", no_data: "내역 수집 대기", query_pending: "집계 중", permission_required: "조회 권한 필요", not_configured: "연결 대기", authentication_required: "GCP 인증 필요", unavailable: "조회 실패", mixed_currency: "통화별 확인 필요"};
   $("gcp-cost-state").textContent = billingStates[gcp.state] || "확인 불가";
-  $("gcp-net").textContent = money(gcp.net_cost, gcp.currency || "KRW");
-  $("gcp-cost-breakdown").textContent = Number.isFinite(gcp.gross_cost)
-    ? `사용료 ${money(gcp.gross_cost, gcp.currency)} · 크레딧 ${money(gcp.credits, gcp.currency)}`
-    : "비용 데이터가 준비되면 표시합니다.";
-  $("gcp-cost-period").textContent = `${gcp.month || "이번 달"} · 프로젝트 사용료 · 세금 별도`;
+  $("gcp-credits-used").textContent = creditsUsed(gcp.credits, gcp.currency || "KRW");
+  $("gcp-cost-period").textContent = `${gcp.month || "이번 달"} · 프로젝트 크레딧 사용액`;
   $("gcp-report-link").href = gcp.report_url || "https://console.cloud.google.com/billing";
   $("gcp-cost-rows").replaceChildren();
   for (const row of gcp.services || []) {
     const tr = document.createElement("tr");
     cell(tr, row.service);
-    cell(tr, money(row.gross_cost, row.currency));
-    cell(tr, money(row.credits, row.currency));
-    cell(tr, money(row.net_cost, row.currency));
+    cell(tr, creditsUsed(row.credits, row.currency));
     $("gcp-cost-rows").append(tr);
   }
   $("gcp-cost-empty").hidden = !!gcp.services?.length;
-  $("gcp-cost-empty").textContent = billingStates[gcp.state] || "비용 데이터가 없습니다.";
+  $("gcp-cost-empty").textContent = billingStates[gcp.state] || "크레딧 데이터가 없습니다.";
   $("gcp-cost-note").textContent = gcp.state === "snapshot"
     ? `Cloud Billing 보고서 CSV · 확인 ${stamp(gcp.observed_at)} · 원 단위 반올림 표시값입니다. 자동 연결: ${billingStates[gcp.automatic_state] || "수집 대기"}. 내보내기가 도착하면 BigQuery 데이터로 자동 전환합니다.`
     : gcp.state === "ok"
