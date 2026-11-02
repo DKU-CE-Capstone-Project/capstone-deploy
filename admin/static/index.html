@@ -45,26 +45,51 @@
           <div id="db" class="metric">—</div>
           <p id="db-note">연결 상태 조회 중</p>
         </article>
-        <article class="card">
-          <div class="card-label">VM CPU <span class="tag">30 MIN</span></div>
-          <div id="cpu" class="metric">—</div>
-          <div id="cpu-chart" class="chart"></div>
+        <article id="cpu-card" class="card metric-card history-card">
+          <div class="card-label">VM CPU <span class="tag">사용률</span></div>
+          <button id="cpu-trigger" class="gauge-control" type="button"
+            aria-label="VM CPU 최근 30분 그래프 보기" aria-expanded="false" aria-controls="cpu-history">
+            <span id="cpu-gauge" class="gauge is-empty"><span id="cpu" class="metric gauge-value">—</span></span>
+          </button>
           <p id="cpu-note">지표 조회 중</p>
+          <p class="history-hint">마우스를 올리면 최근 30분 ↗</p>
+          <div id="cpu-history" class="metric-history" role="region" aria-label="VM CPU 최근 30분 사용률" hidden>
+            <div class="history-heading"><h3>CPU · 최근 30분</h3><button id="cpu-history-close" class="history-close" type="button" aria-label="CPU 그래프 닫기">×</button></div>
+            <div class="history-plot">
+              <div class="history-y-axis" aria-hidden="true"><span>100%</span><span>75%</span><span>50%</span><span>25%</span><span>0%</span></div>
+              <div id="cpu-chart" class="history-chart" role="img" aria-label="CPU 사용률 막대그래프, 0에서 100%"></div>
+            </div>
+            <div class="history-x-axis"><span id="cpu-start">—</span><span id="cpu-end">—</span></div>
+            <p id="cpu-history-note" class="history-note">최근 30분 데이터 조회 중</p>
+          </div>
         </article>
-        <article class="card">
+        <article id="memory-card" class="card metric-card history-card">
           <div class="card-label">
             VM 메모리 <span class="tag">OPS AGENT</span>
           </div>
-          <div id="memory" class="metric">—</div>
-          <div id="memory-chart" class="chart"></div>
+          <button id="memory-trigger" class="gauge-control" type="button"
+            aria-label="VM 메모리 최근 30분 그래프 보기" aria-expanded="false" aria-controls="memory-history">
+            <span id="memory-gauge" class="gauge is-empty"><span id="memory" class="metric gauge-value">—</span></span>
+          </button>
           <p id="memory-note">지표 조회 중</p>
+          <p class="history-hint">마우스를 올리면 최근 30분 ↗</p>
+          <div id="memory-history" class="metric-history" role="region" aria-label="VM 메모리 최근 30분 사용률" hidden>
+            <div class="history-heading"><h3>메모리 · 최근 30분</h3><button id="memory-history-close" class="history-close" type="button" aria-label="메모리 그래프 닫기">×</button></div>
+            <div class="history-plot">
+              <div class="history-y-axis" aria-hidden="true"><span>100%</span><span>75%</span><span>50%</span><span>25%</span><span>0%</span></div>
+              <div id="memory-chart" class="history-chart" role="img" aria-label="메모리 사용률 막대그래프, 0에서 100%"></div>
+            </div>
+            <div class="history-x-axis"><span id="memory-start">—</span><span id="memory-end">—</span></div>
+            <p id="memory-history-note" class="history-note">최근 30분 데이터 조회 중</p>
+          </div>
         </article>
-        <article class="card">
+        <article class="card metric-card">
           <div class="card-label">
             VM 디스크 <span class="tag">OPS AGENT</span>
           </div>
-          <div id="disk" class="metric">—</div>
-          <div id="disk-chart" class="chart"></div>
+          <div id="disk-gauge" class="gauge is-empty" role="img" aria-label="VM 디스크 사용률 조회 중">
+            <span id="disk" class="metric gauge-value">—</span>
+          </div>
           <p id="disk-note">지표 조회 중</p>
         </article>
       </section>
