@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function setup() {
+function setup(hash = '') {
   class Element {
     constructor() { this.children = []; this.style = {setProperty(name, value) {this[name] = value;}}; this.attributes = {}; this.hidden = false; this.disabled = false; this.value = '24'; }
     append(child) { this.children.push(child); }
@@ -17,9 +17,12 @@ function setup() {
   const nodes = new Map();
   const document = {activeElement: null, addEventListener() {}, getElementById(id) { if (!nodes.has(id)) nodes.set(id, new Element()); return nodes.get(id); }, createElement() {return new Element();}};
   for (const key of ['cpu', 'memory']) document.getElementById(key + '-card').append(document.getElementById(key + '-trigger'));
-  const context = vm.createContext({document, Date, console, setInterval() {}, fetch: async () => ({ok:false})});
+  const calls = [];
+  const location = {hash};
+  const window = {addEventListener(name, fn) {this[name] = fn;}, scrollTo() {}};
+  const context = vm.createContext({document, Date, console, location, window, setInterval() {}, fetch: async (url) => {calls.push(url); return {ok:false};}});
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../static/app.js'), 'utf8'), context);
-  return {context, nodes};
+  return {context, nodes, calls};
 }
 function overview(usage = {}) {
   return {project:'fixture-project',instance:'123',updated_at:new Date().toISOString(),connection:{state:'unknown'},metrics:{},usage:{state:'no_data',...usage}};
@@ -126,4 +129,60 @@ test('GiB capacities follow the displayed device and preserve a real zero usage'
   delete context.data.metrics.disk.series[1].points[0].total_bytes;
   vm.runInContext('render(data)', context);
   assert.equal(nodes.get('disk-capacity').textContent, '— GiB / — GiB');
+});
+
+test('API tabs expose only their own panel and scope usage warnings and filters', () => {
+  const {context, nodes} = setup();
+  context.data = overview();
+  vm.runInContext('render(data)', context);
+  assert.equal(nodes.get('view-overview').hidden, false);
+  assert.equal(nodes.get('view-external-api').hidden, true);
+  assert.equal(nodes.get('notice').hidden, true);
+  assert.equal(nodes.get('usage-period').hidden, true);
+  nodes.get('tab-external-api').click();
+  assert.equal(nodes.get('view-overview').hidden, true);
+  assert.equal(nodes.get('view-external-api').hidden, false);
+  assert.equal(nodes.get('view-service-api').hidden, true);
+  assert.equal(nodes.get('notice').hidden, false);
+  assert.equal(nodes.get('usage-period').hidden, false);
+  assert.equal(nodes.get('tab-external-api').attributes['aria-selected'], 'true');
+  assert.equal(context.location.hash, '#external-api');
+  nodes.get('tab-service-api').click();
+  assert.equal(nodes.get('view-external-api').hidden, true);
+  assert.equal(nodes.get('view-service-api').hidden, false);
+  assert.equal(nodes.get('page-title').textContent, '서비스 API 요청');
+});
+
+test('cost deep link is a placeholder with no data fetch or data controls', async () => {
+  const {context, nodes, calls} = setup('#cost');
+  await vm.runInContext('refresh()', context);
+  assert.equal(calls.length, 0);
+  assert.equal(nodes.get('view-cost').hidden, false);
+  assert.equal(nodes.get('data-controls').hidden, true);
+  assert.equal(nodes.get('data-meta').hidden, true);
+  assert.equal(nodes.get('data-footer').hidden, true);
+  assert.equal(nodes.get('notice').hidden, true);
+  assert.equal(nodes.get('page-title').textContent, '비용');
+  context.location.hash = '#service-api';
+  context.window.hashchange();
+  assert.equal(nodes.get('view-cost').hidden, true);
+  assert.equal(nodes.get('view-service-api').hidden, false);
+  assert.equal(calls.length, 1);
+});
+
+test('keyboard navigation and hash history keep the selected tab in sync', () => {
+  const {context, nodes} = setup('#external-api');
+  assert.equal(nodes.get('view-external-api').hidden, false);
+  nodes.get('tab-external-api').keydown({key: 'End', preventDefault() {}});
+  assert.equal(context.location.hash, '#cost');
+  assert.equal(nodes.get('tab-cost').attributes['tabindex'], '0');
+  assert.equal(nodes.get('tab-external-api').attributes['tabindex'], '-1');
+  nodes.get('tab-cost').keydown({key: 'ArrowRight', preventDefault() {}});
+  assert.equal(context.location.hash, '#overview');
+  context.location.hash = '#external-api';
+  context.window.hashchange();
+  assert.equal(nodes.get('view-external-api').hidden, false);
+  context.location.hash = '#constructor';
+  context.window.hashchange();
+  assert.equal(nodes.get('view-overview').hidden, false);
 });

@@ -7,6 +7,49 @@ const states = {
   no_data: "수집 데이터 없음",
   ok: "수집됨",
 };
+const pages = {
+  overview: { title: "운영 현황", eyebrow: "OVERVIEW", description: "VM 리소스와 DB 연결 상태를 확인합니다." },
+  "external-api": { title: "외부 API 사용량", eyebrow: "EXTERNAL API", description: "공급자·모델·작업 단계별 API 호출과 토큰을 확인합니다.", usage: true },
+  "service-api": { title: "서비스 API 요청", eyebrow: "SERVICE API", description: "서비스 API 경로별 요청 수와 오류 응답을 확인합니다.", usage: true },
+  cost: { title: "비용", eyebrow: "COST", description: "비용 화면을 준비하고 있습니다." },
+};
+let currentTab;
+let hasData = false;
+let usageWarning = "";
+let fetchWarning = "";
+function renderNotice() {
+  const message = fetchWarning || usageWarning;
+  $("notice").textContent = message;
+  $("notice").hidden = currentTab === "cost" || !message || (!fetchWarning && currentTab === "overview");
+}
+function showTab(name, updateHash = false) {
+  const key = Object.hasOwn(pages, name) ? name : "overview";
+  const changed = currentTab !== key;
+  currentTab = key;
+  const page = pages[key];
+  for (const name of Object.keys(pages)) {
+    const selected = name === key;
+    $("view-" + name).hidden = !selected;
+    const tab = $("tab-" + name);
+    tab.className = `nav${selected ? " active" : ""}`;
+    tab.setAttribute("aria-selected", String(selected));
+    tab.setAttribute("tabindex", selected ? "0" : "-1");
+  }
+  $("page-title").textContent = page.title;
+  $("page-description").textContent = page.description;
+  $("page-eyebrow").textContent = `ECONMIND / ${page.eyebrow}`;
+  document.title = `EconMind · ${page.title}`;
+  $("usage-period").hidden = !page.usage;
+  for (const id of ["data-controls", "data-meta", "data-footer"]) $(id).hidden = key === "cost";
+  $("db-disclaimer").hidden = key !== "overview";
+  if (updateHash && location.hash !== "#" + key) location.hash = "#" + key;
+  if (changed) {
+    for (const metric of ["cpu", "memory"]) historyOpen(metric, false);
+    window.scrollTo(0, 0);
+  }
+  renderNotice();
+  if (key !== "cost" && (changed || !hasData)) refresh();
+}
 function cell(row, text, detail) {
   const td = document.createElement("td");
   td.textContent = text;
@@ -110,6 +153,8 @@ function bindHistory(key) {
   });
 }
 function render(data) {
+  hasData = true;
+  fetchWarning = "";
   $("project").textContent = data.project
     ? `${data.project} · VM ${data.instance || "미설정"}`
     : "GCP 프로젝트 설정 대기";
@@ -167,8 +212,8 @@ function render(data) {
   if (usage.complete === false)
     warning =
       "조회 한도에 도달했습니다. 아래 값은 일부 이벤트의 합계입니다. 더 짧은 기간을 선택해 주세요.";
-  $("notice").textContent = warning;
-  $("notice").hidden = !warning;
+  usageWarning = warning;
+  renderNotice();
   $("usage-state").textContent =
     (states[usage.state] || "확인 불가") +
     (usage.complete === false ? " · 일부" : "");
@@ -204,7 +249,7 @@ function render(data) {
 }
 async function refresh() {
   const button = $("refresh");
-  if (button.disabled) return;
+  if (currentTab === "cost" || button.disabled) return;
   button.disabled = true;
   try {
     const response = await fetch(`/api/overview?hours=${$("period").value}`, {
@@ -213,9 +258,9 @@ async function refresh() {
     if (!response.ok) throw Error();
     render(await response.json());
   } catch {
-    $("notice").hidden = false;
-    $("notice").textContent =
+    fetchWarning =
       "조회하지 못했습니다. 마지막 표시 값은 이전 조회 결과입니다. 다시 시도해 주세요.";
+    renderNotice();
     $("updated").textContent = "갱신 실패";
   } finally {
     button.disabled = false;
@@ -224,5 +269,21 @@ async function refresh() {
 $("refresh").addEventListener("click", refresh);
 $("period").addEventListener("change", refresh);
 for (const key of ["cpu", "memory"]) bindHistory(key);
+const pageKeys = Object.keys(pages);
+for (const [index, key] of pageKeys.entries()) {
+  $("tab-" + key).addEventListener("click", () => showTab(key, true));
+  $("tab-" + key).addEventListener("keydown", (event) => {
+    let next;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (index + 1) % pageKeys.length;
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = (index + pageKeys.length - 1) % pageKeys.length;
+    if (event.key === "Home") next = 0;
+    if (event.key === "End") next = pageKeys.length - 1;
+    if (next === undefined) return;
+    event.preventDefault();
+    showTab(pageKeys[next], true);
+    $("tab-" + pageKeys[next]).focus();
+  });
+}
+window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
 setInterval(refresh, 60000);
-refresh();
+showTab(location.hash.slice(1));

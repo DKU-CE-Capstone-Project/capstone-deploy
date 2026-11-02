@@ -38,15 +38,34 @@ aside {
   letter-spacing: 2px;
   margin: 65px 12px 16px;
 }
+.tab-nav {
+  display: grid;
+  gap: 6px;
+}
 .nav {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  white-space: nowrap;
   border-radius: 8px;
-  padding: 14px;
+  padding: 14px 11px;
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
+  background: transparent;
   color: #c9e3df;
   text-decoration: none;
   font-size: 14px;
 }
-.active {
+.nav:hover {
+  background: #1c3942;
+}
+.nav:focus-visible {
+  outline: 2px solid #69cfb6;
+  outline-offset: 2px;
+}
+.nav.active {
   background: #24424b;
   border-left: 3px solid #69cfb6;
 }
@@ -395,6 +414,30 @@ td small {
   color: #83969e;
   font-size: 13px;
 }
+.cost-placeholder {
+  min-height: 310px;
+  margin-top: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+.cost-symbol {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  color: #73968c;
+  background: #edf5f1;
+  font-size: 25px;
+}
+.cost-placeholder h2 {
+  color: #7c9199;
+  font-size: 14px;
+  font-weight: 500;
+}
 .footnote {
   padding: 16px 24px;
   font-size: 10px;
@@ -449,9 +492,20 @@ footer {
     padding: 19px;
   }
   .workspace,
-  .nav,
   .aside-bottom {
     display: none;
+  }
+  .tab-nav {
+    display: flex;
+    overflow-x: auto;
+    margin-top: 18px;
+    padding: 3px;
+  }
+  .nav {
+    flex: 0 0 auto;
+    width: auto;
+    padding: 10px;
+    font-size: 12px;
   }
   main {
     margin: 0;
