@@ -46,7 +46,9 @@ function renderMeta() {
       ? `${data.project}${currentTab === "cost" ? " · 프로젝트 크레딧·API 비용" : ` · VM ${data.instance || "미설정"}`}`
       : "프로젝트 확인 중");
   $("updated").textContent = data ? `갱신 ${new Date(data.updated_at).toLocaleString("ko-KR")}` : "조회 중…";
-  $("monitoring-source").textContent = localMode ? "호스트 지표 · 앱 사용량" : "Cloud Monitoring · Cloud Logging";
+  $("monitoring-source").textContent = source?.mode === "vm"
+    ? "VM 수집기 · Cloud Billing"
+    : localMode ? "호스트 지표 · 앱 사용량" : "Cloud Monitoring · Cloud Logging";
   $("gcp-summary").hidden = $("gcp-details").hidden = localMode;
   $("external-cost-source").textContent = localMode ? "공시 단가 · USD · 로컬 수집 이벤트 기준" : "공시 단가 · USD · 관측된 프로젝트 사용량 기준";
   if (currentTab === "overview") $("page-description").textContent = localMode ? "Docker 호스트 리소스와 DB 연결 상태를 확인합니다." : pages.overview.description;
@@ -226,7 +228,7 @@ function render(data) {
     gauge.className = `gauge${latest ? "" : " is-empty"}`;
     const name = `${localMode ? "호스트" : "VM"} ${metricNames[key]}`;
     $(key + "-label").textContent = name;
-    if (key !== "cpu") $(key + "-source").textContent = localMode ? "LINUX" : "OPS AGENT";
+    if (key !== "cpu") $(key + "-source").textContent = data.mode === "vm" || localMode ? "LINUX" : "OPS AGENT";
     const label = `${name} 사용률 ${latest ? latest.value.toFixed(1) + "%" : "확인 불가"}`;
     (key === "disk" ? gauge : $(key + "-trigger")).setAttribute("aria-label", label + (key === "disk" ? "" : ", 최근 30분 그래프 보기"));
     if (key !== "disk") $(key + "-history").setAttribute("aria-label", `${name} 최근 30분 사용률`);
@@ -242,7 +244,7 @@ function render(data) {
     }
     const age = latest ? (Date.now() - Date.parse(latest.time)) / 60000 : 0;
     $(key + "-note").textContent = latest
-      ? `${key === "disk" ? `${selected?.device || "디스크"} · ${localMode ? "" : "장치 중 최대 · "}` : ""}${new Date(latest.time).toLocaleTimeString("ko-KR")}${age > 5 ? " · 지연된 지표" : ""}${metric.complete === false ? " · 일부 장치" : ""}`
+      ? `${key === "disk" ? `${selected?.device || "디스크"} · ${localMode || data.mode === "vm" ? "" : "장치 중 최대 · "}` : ""}${new Date(latest.time).toLocaleTimeString("ko-KR")}${age > 5 ? " · 지연된 지표" : ""}${metric.complete === false ? " · 일부 장치" : ""}`
       : states[metric?.state] || "설정 대기";
     if (key !== "disk") renderHistory(key, selected?.points || [], data.updated_at);
   }
@@ -251,7 +253,7 @@ function render(data) {
   if (usage.state !== "ok")
     warning =
       usage.state === "no_data"
-        ? `사용량 이벤트가 아직 없습니다. ${localMode ? "앱 로그 전달 설정과" : "계측 배포·Ops Agent 전송 상태와"} 선택한 기간을 확인해 주세요.`
+        ? `사용량 이벤트가 아직 없습니다. ${localMode || data.mode === "vm" ? "앱 로그 전달 설정과" : "계측 배포·Ops Agent 전송 상태와"} 선택한 기간을 확인해 주세요.`
         : `사용량 ${states[usage.state] || "확인 불가"}. 수집 설정과 읽기 권한을 확인해 주세요.`;
   if (usage.complete === false)
     warning =

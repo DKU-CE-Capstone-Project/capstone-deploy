@@ -1,6 +1,7 @@
 """Unified admin service for Cloud Run or loopback Docker Compose."""
 
 import asyncio
+import hmac
 import os
 import time
 from pathlib import Path
@@ -11,10 +12,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from local_source import LocalSource
 from sources import CloudSource
+from vm_source import VmSource
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 source_mode = os.getenv("ADMIN_SOURCE", "gcp")
-source = {"gcp": CloudSource, "local": LocalSource}[source_mode]()
+source = {"gcp": CloudSource, "local": LocalSource, "vm": VmSource}[source_mode]()
+read_token = os.getenv("ADMIN_READ_TOKEN", "")
+if read_token and len(read_token) < 32:
+    raise ValueError("ADMIN_READ_TOKEN must be at least 32 characters")
 static = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static), name="static")
 cache = {}
@@ -25,7 +30,13 @@ cost_lock = asyncio.Lock()
 
 @app.middleware("http")
 async def headers(request, call_next):
-    response = await call_next(request)
+    if read_token and not hmac.compare_digest(
+        request.headers.get("Authorization", "").encode(),
+        ("Bearer " + read_token).encode(),
+    ):
+        response = JSONResponse({"error": "Forbidden"}, status_code=403)
+    else:
+        response = await call_next(request)
     response.headers.update(
         {
             "Cache-Control": "no-store",

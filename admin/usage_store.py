@@ -93,6 +93,7 @@ class UsageStore:
     def __init__(self, path):
         self.path = path
         self.diffbot_plan = os.getenv("DIFFBOT_COST_PLAN", "unknown")
+        self.api_start = parse_start(os.getenv("API_COST_MEASUREMENT_START", ""))
 
     def connect(self):
         return closing(sqlite3.connect(self.path, timeout=5))
@@ -143,10 +144,15 @@ class UsageStore:
         end = now()
         with self.connect() as db:
             db.execute("BEGIN")
-            (start,) = db.execute("SELECT min(event_time) FROM usage_events").fetchone()
+            start = self.api_start
+            if start is None:
+                (first,) = db.execute(
+                    "SELECT min(event_time) FROM usage_events"
+                ).fetchone()
+                start = parse_start(first)
             if start is None:
                 return {"state": "no_data", "archive_state": "archive_pending"}
-            bounds = window(period, parse_start(start), end)
+            bounds = window(period, start, end)
             rows = db.execute(
                 """SELECT cost_key, count(*) FROM usage_events
                    WHERE event_time >= ? AND event_time < ? AND cost_key IS NOT NULL

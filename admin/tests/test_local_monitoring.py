@@ -80,3 +80,22 @@ def test_local_overview_returns_usage_when_host_collector_is_down(monkeypatch):
     assert result["metrics"]["cpu"]["state"] == "unavailable"
     assert result["usage"]["observed_events"] == 1
     assert result["connection"] == {"state": "not_configured"}
+
+
+def test_vm_collector_failure_preserves_mongodb_status(monkeypatch):
+    from vm_source import VmSource
+
+    monkeypatch.setenv("VM_COLLECTOR_URL", "http://10.0.0.2:18090")
+    monkeypatch.setenv("VM_COLLECTOR_TOKEN", "a" * 64)
+    source = VmSource()
+    monkeypatch.setattr(source, "connection", lambda: {"state": "connected"})
+
+    def unavailable(_path, _params):
+        raise requests.ConnectionError
+
+    monkeypatch.setattr(source, "collector_data", unavailable)
+    result = source.snapshot(24)
+    assert result["mode"] == "vm"
+    assert result["metrics"]["cpu"]["state"] == "unavailable"
+    assert result["usage"]["state"] == "unavailable"
+    assert result["connection"] == {"state": "connected"}

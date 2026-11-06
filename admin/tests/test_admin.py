@@ -384,3 +384,14 @@ def test_capacity_does_not_mix_observations_from_different_times_or_devices():
         "timeSeries"
     ]
     assert not sources.capacity_series(payload, "disk")
+
+
+def test_private_vm_gateway_requires_read_token(monkeypatch):
+    token = "a" * 64
+    monkeypatch.setattr(app, "read_token", token)
+    client = TestClient(app.app)
+    assert client.get("/health").status_code == 403
+    assert (
+        client.get("/health", headers={"Authorization": "Bearer " + token}).status_code
+        == 200
+    )
