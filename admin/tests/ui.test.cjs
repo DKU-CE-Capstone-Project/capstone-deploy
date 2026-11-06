@@ -279,3 +279,18 @@ test('changing a period while fetching skips the stale result and fetches the se
   assert.equal(vm.runInContext('lastCosts.external_period',context),'week');
   assert.equal(nodes.get('external-cost-period').textContent,'7일');
 });
+
+test('Compose mode labels host data and hides GCP billing without hiding API costs', () => {
+  const {context, nodes} = setup();
+  context.data = {...overview(), mode: 'local', instance: 'Docker Linux'};
+  vm.runInContext('render(data)', context);
+  assert.match(nodes.get('project').textContent, /Docker Compose.*Docker Linux/);
+  assert.equal(nodes.get('cpu-label').textContent, '호스트 CPU');
+  assert.match(nodes.get('notice').textContent, /앱 로그 전달 설정/);
+  nodes.get('tab-cost').click();
+  context.cost = {mode: 'local', instance: 'Docker Linux', updated_at: context.data.updated_at};
+  vm.runInContext('renderCosts(cost)', context);
+  assert.equal(nodes.get('gcp-summary').hidden, true);
+  assert.equal(nodes.get('gcp-details').hidden, true);
+  assert.match(nodes.get('external-cost-source').textContent, /로컬 수집/);
+});

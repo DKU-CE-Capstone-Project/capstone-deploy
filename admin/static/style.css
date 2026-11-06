@@ -420,6 +420,9 @@ td small {
   gap: 16px;
   margin-bottom: 24px;
 }
+#gcp-summary[hidden] + .cost-card {
+  grid-column: 1 / -1;
+}
 .cost-card .metric {
   font-variant-numeric: tabular-nums;
   font-size: clamp(23px, 2.4vw, 31px);

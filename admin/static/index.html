@@ -18,7 +18,7 @@
         <button id="tab-cost" class="nav" type="button" role="tab" aria-selected="false" aria-controls="view-cost" tabindex="-1"><span aria-hidden="true">₩</span> 비용</button>
       </nav>
       <div class="aside-bottom">
-        관리자 전용<br /><span>Cloud Monitoring · Cloud Logging</span>
+        관리자 전용<br /><span id="monitoring-source">Cloud Monitoring · Cloud Logging</span>
       </div>
     </aside>
     <main>
@@ -54,7 +54,7 @@
           <p id="db-note">연결 상태 조회 중</p>
         </article>
         <article id="cpu-card" class="card metric-card history-card">
-          <div class="card-label">VM CPU <span class="tag">사용률</span></div>
+          <div class="card-label"><span id="cpu-label">VM CPU</span> <span class="tag">사용률</span></div>
           <button id="cpu-trigger" class="gauge-control" type="button"
             aria-label="VM CPU 최근 30분 그래프 보기" aria-expanded="false" aria-controls="cpu-history">
             <span id="cpu-gauge" class="gauge is-empty"><span id="cpu" class="metric gauge-value">—</span></span>
@@ -73,7 +73,7 @@
         </article>
         <article id="memory-card" class="card metric-card history-card">
           <div class="card-label">
-            VM 메모리 <span class="tag">OPS AGENT</span>
+            <span id="memory-label">VM 메모리</span> <span id="memory-source" class="tag">OPS AGENT</span>
           </div>
           <button id="memory-trigger" class="gauge-control" type="button"
             aria-label="VM 메모리 최근 30분 그래프 보기" aria-expanded="false" aria-controls="memory-history">
@@ -94,7 +94,7 @@
         </article>
         <article class="card metric-card">
           <div class="card-label">
-            VM 디스크 <span class="tag">OPS AGENT</span>
+            <span id="disk-label">VM 디스크</span> <span id="disk-source" class="tag">OPS AGENT</span>
           </div>
           <div id="disk-gauge" class="gauge is-empty" role="img" aria-label="VM 디스크 사용률 조회 중">
             <span id="disk" class="metric gauge-value">—</span>
@@ -163,7 +163,7 @@
       </section>
       <section id="view-cost" role="tabpanel" aria-labelledby="tab-cost" tabindex="0" hidden>
         <div class="cost-summary-grid">
-          <article class="card cost-card">
+          <article id="gcp-summary" class="card cost-card">
             <div class="card-label">GCP 크레딧 사용액 <span id="gcp-cost-state" class="tag">조회 중</span></div>
             <div class="cost-periods" role="group" aria-label="GCP 집계 기간">
               <button type="button" id="gcp-period-all" class="selected" aria-pressed="true">누적</button>
@@ -189,7 +189,7 @@
             <p id="external-measurement-start" class="cost-detail">측정 시작 확인 중</p>
           </article>
         </div>
-        <div class="panel">
+        <div id="gcp-details" class="panel">
           <div class="panel-title">
             <div><h2>GCP 서비스별 크레딧 사용액</h2><p id="gcp-cost-period">조회 기간 확인 중</p></div>
             <a id="gcp-report-link" class="source-link" href="https://console.cloud.google.com/billing" target="_blank" rel="noopener noreferrer">GCP 보고서 ↗</a>
@@ -203,7 +203,7 @@
         </div>
         <div class="panel">
           <div class="panel-title">
-            <div><h2>외부 API별 예상 비용</h2><p>공시 단가 · USD · 관측된 프로젝트 사용량 기준</p><p id="external-cost-range">조회 기간 확인 중</p></div>
+            <div><h2>외부 API별 예상 비용</h2><p id="external-cost-source">공시 단가 · USD · 관측된 프로젝트 사용량 기준</p><p id="external-cost-range">조회 기간 확인 중</p></div>
             <span id="external-cost-state" class="pill">조회 중</span>
           </div>
           <div class="table-wrap"><table class="cost-table">

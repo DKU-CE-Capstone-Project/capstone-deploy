@@ -15,6 +15,47 @@
 GCP 요약과 서비스별 표에는 사용 크레딧만 표시한다. Billing의 음수 credits를 양수 사용액으로
 표현하며, 양수 정정·복원은 음수 사용액으로 반영한다. 미수집과 실제 0원을 구분한다.
 
+## GCP 없이 Docker Compose로 실행
+
+배포 저장소 루트에서 실행한다. [Docker Engine 28 이상](https://docs.docker.com/engine/network/port-publishing/)과
+[Docker Compose 2.24.4 이상](https://docs.docker.com/reference/compose-file/merge/#replace-value)을 사용한다.
+
+```sh
+docker compose --env-file /dev/null -p econmind-monitor-local -f compose.monitoring.yaml up -d --build
+```
+
+관리자 페이지는 <http://127.0.0.1:8090>에서 연다. 서버에서 실행하는 경우 SSH 포트 포워딩으로
+접속한다. 로컬 모드는 IAP 인증이 없으므로 관리자·로그 수신 포트를 루프백에 바인딩한다.
+`MONITOR_ADMIN_PORT`, `MONITOR_FORWARD_PORT`(기본 `24224`), `MONITOR_HOST_NAME`으로 설정을 조정한다.
+
+- `host-metrics`는 Docker Engine이 실행되는 Linux의 CPU 전체 코어와 메모리를 `/proc`에서 읽고,
+  Docker 데이터 볼륨의 파일시스템 용량을 수집한다. Docker Desktop에서는 Linux VM 기준이다.
+  메모리 사용량은 `MemTotal − MemAvailable`, 디스크 사용량은 전체 블록에서 자유 블록을 뺀 값이다.
+  10초마다 읽으며 최근 30분만 메모리에 보관한다. 수집기 재시작 후 지표 이력이 다시 쌓인다.
+- `usage-forwarder`는 Docker의 Fluentd 드라이버로 들어온 `econmind_usage` 로그를 전달한다.
+  `usage-store`는 집계에 쓰이는 필드만 `monitor_usage` SQLite 볼륨에 저장하고 `event_id`로 중복을 제거한다.
+  누적 시작 시각은 가장 이른 보관 이벤트 기준이다. 이전 시각의 이벤트가 늦게 도착하면 함께 집계한다.
+  `docker compose down` 후에도 볼륨을 보존하면 누적 기록이 유지된다. 로그 전달은 비동기이며,
+  수집기 중단이나 버퍼 포화 시 미저장 로그가 유실될 수 있다. 원격 백업·이전은 별도로 관리한다.
+- `admin`은 수집기 두 곳을 따로 조회한다. 한쪽 조회가 실패해도 다른 쪽 데이터를 표시한다.
+  로컬 비용 탭은 수집된 외부 API의 예상액과 기간별 합계를 표시한다. GCP 청구 내역은 표시하지 않는다.
+
+앱 사용량과 DB 상태를 연결하려면 **새 서버 또는 로컬 앱**의 기존 Compose에 두 모니터링 파일을
+덧붙이고 앱을 기동한다. 아래 예는 로컬 `docker-compose.yaml`과 함께 실행하는 경우다.
+앱에 필요한 로컬 `.env`를 준비한다. 아래 빌드 경로는 현재 프로젝트 체크아웃 기준이다.
+같은 포트를 쓰는 독립 모니터링 스택이 있으면 먼저 내리거나 포트를 변경한다.
+
+```sh
+BACKEND_BUILD_CONTEXT=../capstone-backend FRONTEND_BUILD_CONTEXT=../capstone-frontend \
+  docker compose -f docker-compose.yaml -f compose.monitoring.yaml -f compose.monitoring-app.yaml up -d --build
+```
+
+오버레이는 `econmind-api`, `econmind-worker`, `econmind-v2-worker`의 로그 드라이버를 설정한다.
+로그 드라이버 변경에는 해당 앱 컨테이너의 재생성이 필요하다. 다른 앱을 구성할 때는 동일한 서비스
+이름 또는 그에 맞춘 오버레이를 사용한다. 앱 없이 기동하면 호스트 지표부터 표시된다.
+MongoDB 카드는 앱과 관리자에 같은 32자 이상의 `ADMIN_STATUS_TOKEN`을 주입했을 때 활성화된다.
+관리자는 사설 Compose 네트워크에서 백엔드 상태 엔드포인트의 연결 결과만 조회한다.
+
 ## 비용 데이터 연결
 
 - `GCP_COST_MEASUREMENT_START`와 `API_COST_MEASUREMENT_START`는 시간대가 있는 고정 ISO 시각이다.

@@ -1,6 +1,7 @@
-"""Private Cloud Run admin service. IAM authenticates requests before this app."""
+"""Unified admin service for Cloud Run or loopback Docker Compose."""
 
 import asyncio
+import os
 import time
 from pathlib import Path
 from typing import Literal
@@ -8,10 +9,12 @@ from typing import Literal
 from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from local_source import LocalSource
 from sources import CloudSource
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-source = CloudSource()
+source_mode = os.getenv("ADMIN_SOURCE", "gcp")
+source = {"gcp": CloudSource, "local": LocalSource}[source_mode]()
 static = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static), name="static")
 cache = {}

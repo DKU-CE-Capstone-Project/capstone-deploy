@@ -36,6 +36,30 @@ def iso(value):
     return value.isoformat().replace("+00:00", "Z")
 
 
+def connection_status(url, token, get=None):
+    if not url or len(token) < 32:
+        return {"state": "not_configured"}
+    try:
+        response = (get or requests.get)(
+            url,
+            headers={"Authorization": "Bearer " + token},
+            timeout=(3, 8),
+            allow_redirects=False,
+        )
+        response.raise_for_status()
+        body = response.json()
+        state = body.get("mongodb") if isinstance(body, dict) else None
+        return {
+            "state": state
+            if state in ("connected", "unreachable", "disabled")
+            else "unknown",
+            "checked_at": iso(now()),
+        }
+    except (requests.RequestException, ValueError):
+        # An unreachable status endpoint is not evidence that MongoDB is down.
+        return {"state": "unknown", "checked_at": iso(now())}
+
+
 def capacity_series(data, key):
     """Use complete, simultaneous Linux host states for capacity and utilization."""
     states = (
@@ -185,27 +209,7 @@ class CloudSource:
                 raise ValueError("Expected a fully qualified BigQuery table")
 
     def connection(self):
-        if not self.status_url or len(self.status_token) < 32:
-            return {"state": "not_configured"}
-        try:
-            response = requests.get(
-                self.status_url,
-                headers={"Authorization": "Bearer " + self.status_token},
-                timeout=(3, 8),
-                allow_redirects=False,
-            )
-            response.raise_for_status()
-            body = response.json()
-            state = body.get("mongodb") if isinstance(body, dict) else None
-            return {
-                "state": state
-                if state in ("connected", "unreachable", "disabled")
-                else "unknown",
-                "checked_at": iso(now()),
-            }
-        except (requests.RequestException, ValueError):
-            # An unreachable status endpoint is not evidence that MongoDB is down.
-            return {"state": "unknown", "checked_at": iso(now())}
+        return connection_status(self.status_url, self.status_token)
 
     def usage(self, session, hours):
         start, end = now() - timedelta(hours=hours), now()
