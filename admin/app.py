@@ -6,6 +6,7 @@ import os
 import time
 from pathlib import Path
 from typing import Literal
+from uuid import UUID
 
 from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
@@ -76,6 +77,19 @@ async def overview(hours: int = Query(default=24, ge=1, le=168)):
             )
         cache[hours] = time.monotonic(), data
         return JSONResponse(data)
+
+
+@app.get("/api/report-job-usage")
+async def report_job_usage(job_id: UUID):
+    try:
+        return await asyncio.to_thread(source.job_usage, str(job_id))
+    except Exception:  # noqa: BLE001 — sanitize collector failures
+        return JSONResponse(
+            {
+                "error": "리포트 작업 사용량을 조회하지 못했습니다. 잠시 후 다시 시도해 주세요."
+            },
+            status_code=503,
+        )
 
 
 @app.get("/api/costs")

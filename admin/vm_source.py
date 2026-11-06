@@ -36,6 +36,9 @@ class VmSource(CloudSource):
             raise ValueError("Invalid collector response")
         return data
 
+    def job_usage(self, job_id):
+        return self.collector_data("/api/report-job-usage", {"job_id": job_id})
+
     def snapshot(self, hours):
         try:
             data = self.collector_data("/api/overview", {"hours": hours})

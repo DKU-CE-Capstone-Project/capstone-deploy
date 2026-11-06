@@ -39,6 +39,37 @@ test('unknown DB and missing usage never render zero or disconnected', () => {
   assert.match(nodes.get('notice').textContent, /이벤트가 아직 없습니다/);
 });
 
+test('report job lookup renders observed tokens and partial pricing, then clears a missing result', async () => {
+  const jobId = '97a0bf73-21b5-4d89-85cb-1303a010d56a';
+  const missingId = '2f34a75b-977e-4fc7-afc6-2b7b73b4bb55';
+  const {context, nodes, calls} = setup('#cost', async (url) => {
+    if (url.endsWith(missingId)) return {ok:true, json:async () => ({state:'no_data'})};
+    if (!url.endsWith(jobId)) return {ok:true, json:async () => ({})};
+    return {ok:true, json:async () => ({
+      state:'ok', job_id:jobId, estimated_usd:0.000925, calls:2, priced_calls:1, unpriced_calls:1, logs_complete:true,
+      rows:[{stage:'analysis', operation:'generate', provider:'gemini', model:'gemini-3.5-flash-lite',
+        sdk_calls:2, http_attempts:0, cache_hits:0, estimated_usd:0.000925, unpriced_calls:1,
+        token_observations:{input_tokens:2, output_tokens:1}, token_sums:{input_tokens:1200, output_tokens:200}}],
+    })};
+  });
+  const submit = () => nodes.get('report-job-form').submit({preventDefault() {}});
+  const input = context.document.getElementById('report-job-id');
+  input.value = jobId;
+  await submit();
+  assert.equal(calls.at(-1), '/api/report-job-usage?job_id=' + jobId);
+  assert.equal(nodes.get('report-job-results').hidden, false);
+  assert.match(nodes.get('report-job-status').textContent, /1 \/ 2회 산정 · 미산정 1회/);
+  assert.equal(nodes.get('report-job-totals').textContent, '관측 토큰 합계 · 입력 1,200 · 출력 200');
+  const cells = nodes.get('report-job-rows').children[0].children;
+  assert.equal(cells[0].textContent, 'analysis');
+  assert.equal(cells[4].textContent, '200 (일부)');
+  input.value = missingId;
+  await submit();
+  assert.equal(nodes.get('report-job-results').hidden, true);
+  assert.equal(nodes.get('report-job-rows').children.length, 0);
+  assert.match(nodes.get('report-job-status').textContent, /사용량이 없습니다/);
+});
+
 test('partial token coverage, HTTP versus SDK, and log cap stay visible', () => {
   const {context,nodes} = setup();
   context.data = overview({state:'ok',complete:false,providers:[{provider:'<script>private</script>',model:'fixture',operation:'generate',stage:'analysis',service_tier:'standard',http_attempts:0,sdk_calls:2,cache_hits:1,errors:0,cancelled:1,token_observations:{input_tokens:1,output_tokens:0},token_sums:{input_tokens:120,output_tokens:0}}]});

@@ -307,6 +307,67 @@ function costRange(data) {
 function creditsUsed(value, currency) {
   return money(Number.isFinite(value) ? value === 0 ? 0 : -value : undefined, currency);
 }
+function observedTokenTotal(rows, key) {
+  const observed = rows.filter((row) => row.token_observations[key]);
+  return observed.length ? observed.reduce((total, row) => total + row.token_sums[key], 0) : null;
+}
+async function lookupReportJob(event) {
+  event.preventDefault();
+  const input = $("report-job-id");
+  const button = $("report-job-submit");
+  if (button.disabled) return;
+  const jobId = input.value.trim();
+  const status = $("report-job-status");
+  const results = $("report-job-results");
+  const rows = $("report-job-rows");
+  status.hidden = false;
+  results.hidden = true;
+  rows.replaceChildren();
+  input.disabled = button.disabled = true;
+  status.textContent = "작업 사용량 조회 중…";
+  try {
+    const response = await fetch(`/api/report-job-usage?job_id=${encodeURIComponent(jobId)}`, {cache: "no-store"});
+    if (response.status === 422) {
+      status.textContent = "리포트 작업 ID 형식을 확인해 주세요.";
+      return;
+    }
+    if (!response.ok) throw Error();
+    const data = await response.json();
+    if (data.state === "not_configured") {
+      status.textContent = "SQLite 수집기가 연결된 관리자에서 작업별 사용량을 조회할 수 있습니다.";
+      return;
+    }
+    if (data.state === "no_data") {
+      status.textContent = "이 작업 ID로 수집된 사용량이 없습니다.";
+      return;
+    }
+    for (const row of data.rows) {
+      const tr = document.createElement("tr");
+      cell(tr, row.stage, row.operation);
+      cell(tr, row.provider, row.model);
+      cell(tr, (row.sdk_calls + row.http_attempts).toLocaleString(), row.cache_hits ? `캐시 재사용 ${row.cache_hits}회` : "");
+      cell(tr, tokens(row, "input_tokens"));
+      cell(tr, tokens(row, "output_tokens"));
+      cell(tr, Number.isFinite(row.estimated_usd) ? money(row.estimated_usd) : "미산정",
+        row.unpriced_calls ? `미산정 ${row.unpriced_calls}회` : "");
+      rows.append(tr);
+    }
+    const amount = Number.isFinite(data.estimated_usd) ? money(data.estimated_usd) : "미산정";
+    const missing = data.unpriced_calls ? ` · 미산정 ${data.unpriced_calls}회` : "";
+    const capped = data.logs_complete ? "" : " · 조회 한도 도달, 일부 이벤트";
+    status.textContent = `${data.job_id} · 예상 비용 ${amount} · ${data.priced_calls} / ${data.calls}회 산정${missing}${capped}`;
+    const inputTokens = observedTokenTotal(data.rows, "input_tokens")?.toLocaleString() ?? "미제공";
+    const outputTokens = observedTokenTotal(data.rows, "output_tokens")?.toLocaleString() ?? "미제공";
+    const countedTokens = observedTokenTotal(data.rows, "counted_input_tokens");
+    const counted = countedTokens === null ? "" : ` · 별도 계수 입력 ${countedTokens.toLocaleString()}`;
+    $("report-job-totals").textContent = `관측 토큰 합계 · 입력 ${inputTokens} · 출력 ${outputTokens}${counted}`;
+    results.hidden = false;
+  } catch {
+    status.textContent = "리포트 작업 사용량을 조회하지 못했습니다. 다시 시도해 주세요.";
+  } finally {
+    input.disabled = button.disabled = false;
+  }
+}
 function renderCosts(data) {
   lastCosts = data;
   costFetchWarning = "";
@@ -395,6 +456,7 @@ async function refresh() {
 }
 $("refresh").addEventListener("click", refresh);
 $("period").addEventListener("change", refresh);
+$("report-job-form").addEventListener("submit", lookupReportJob);
 for (const component of ["gcp", "external"]) {
   for (const period of Object.keys(costPeriodLabels)) {
     $(`${component}-period-${period}`).addEventListener("click", () => selectCostPeriod(component, period));

@@ -108,6 +108,13 @@ def capacity_series(data, key):
     ]
 
 
+def provider_usage_key(event):
+    return tuple(
+        event.get(key) or "—"
+        for key in ("provider", "model", "operation", "stage", "service_tier")
+    )
+
+
 def summarize(entries):
     providers, routes, seen = {}, {}, set()
     for entry in entries:
@@ -132,10 +139,7 @@ def summarize(entries):
             row["requests"] += 1
             row["errors"] += event.get("outcome") == "error"
         elif kind in ("sdk_call", "http_attempt", "cache_hit"):
-            key = tuple(
-                event.get(k) or "—"
-                for k in ("provider", "model", "operation", "stage", "service_tier")
-            )
+            key = provider_usage_key(event)
             row = providers.setdefault(
                 key,
                 dict(
@@ -181,6 +185,9 @@ def summarize(entries):
 
 
 class CloudSource:
+    def job_usage(self, _job_id):
+        return {"state": "not_configured"}
+
     def __init__(self):
         self.project = os.getenv("GCP_PROJECT_ID", "")
         self.instance = os.getenv("GCP_VM_INSTANCE_ID", "")

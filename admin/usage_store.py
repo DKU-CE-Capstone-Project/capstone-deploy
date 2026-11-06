@@ -7,19 +7,20 @@ import sqlite3
 from contextlib import asynccontextmanager, closing
 from datetime import timedelta
 from typing import Literal
+from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from history import MAX_GROUPS
 from periods import parse_start, window
 from pricing import COST_FIELDS, estimate_external
-from sources import TOKEN_FIELDS, UTC, iso, now, summarize
+from sources import TOKEN_FIELDS, UTC, iso, now, provider_usage_key, summarize
 
 ENTRY_LIMIT = 10_000
 MAX_BATCH_BYTES = 8 * 1024 * 1024
 EVENT_ID = re.compile(r"[a-f0-9-]{16,64}", re.IGNORECASE)
-# Retain only fields used for counts or estimates. Docker metadata, identifiers
-# for requests/jobs, and arbitrary message fields never reach the ledger.
+# Retain only fields used for counts or estimates. Report job IDs are stored
+# separately from the event payload for lookup.
 LABEL_FIELDS = {
     "provider",
     "model",
@@ -83,10 +84,16 @@ def event_row(record, received_at):
         value = event.get(field)
         if type(value) is int and 0 <= value < 2**63:
             payload[field] = value
-    cost_key = None
+    cost_key = job_id = None
     if kind in EXTERNAL_KINDS:
         cost_key = json.dumps({field: payload.get(field) for field in COST_FIELDS})
-    return event_id, event_time, json.dumps(payload), cost_key
+        value = event.get("job_id")
+        if isinstance(value, str):
+            try:
+                job_id = str(UUID(value))
+            except ValueError:
+                pass
+    return event_id, event_time, json.dumps(payload), cost_key, job_id
 
 
 class UsageStore:
@@ -100,14 +107,22 @@ class UsageStore:
 
     def initialize(self):
         with self.connect() as db:
-            db.executescript("""
-                PRAGMA journal_mode = WAL;
-                CREATE TABLE IF NOT EXISTS usage_events (
+            db.execute("PRAGMA journal_mode = WAL")
+            with db:
+                db.execute("BEGIN IMMEDIATE")
+                db.execute("""CREATE TABLE IF NOT EXISTS usage_events (
                     event_id TEXT PRIMARY KEY, event_time TEXT NOT NULL,
-                    payload TEXT NOT NULL, cost_key TEXT
-                );
-                CREATE INDEX IF NOT EXISTS usage_event_time ON usage_events(event_time);
-            """)
+                    payload TEXT NOT NULL, cost_key TEXT, job_id TEXT
+                )""")
+                columns = db.execute("PRAGMA table_info(usage_events)").fetchall()
+                if "job_id" not in {column[1] for column in columns}:
+                    db.execute("ALTER TABLE usage_events ADD COLUMN job_id TEXT")
+                db.execute(
+                    "CREATE INDEX IF NOT EXISTS usage_event_time ON usage_events(event_time)"
+                )
+                db.execute("""CREATE INDEX IF NOT EXISTS usage_event_job
+                    ON usage_events(job_id, event_time DESC, event_id)
+                    WHERE job_id IS NOT NULL""")
 
     def ingest(self, records):
         received_at = now()
@@ -116,7 +131,10 @@ class UsageStore:
             return
         with self.connect() as db, db:
             db.executemany(
-                "INSERT INTO usage_events VALUES (?, ?, ?, ?) ON CONFLICT(event_id) DO NOTHING",
+                """INSERT INTO usage_events (event_id, event_time, payload, cost_key, job_id)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(event_id) DO UPDATE SET job_id = excluded.job_id
+                   WHERE usage_events.job_id IS NULL AND excluded.job_id IS NOT NULL""",
                 rows,
             )
 
@@ -139,6 +157,36 @@ class UsageStore:
                 {"jsonPayload": json.loads(row[0])} for row in rows[:ENTRY_LIMIT]
             ),
         }
+
+    def job_usage(self, job_id):
+        with self.connect() as db:
+            records = db.execute(
+                """SELECT payload FROM usage_events WHERE job_id = ?
+                   ORDER BY event_time DESC, event_id LIMIT ?""",
+                (job_id, ENTRY_LIMIT + 1),
+            ).fetchall()
+        entries = [{"jsonPayload": json.loads(row[0])} for row in records[:ENTRY_LIMIT]]
+        groups = {}
+        for entry in entries:
+            groups.setdefault(provider_usage_key(entry["jsonPayload"]), []).append(
+                entry
+            )
+
+        rows = summarize(entries)["providers"]
+        for row in rows:
+            cost = estimate_external(
+                groups[provider_usage_key(row)], diffbot_plan=self.diffbot_plan
+            )
+            row.update(
+                estimated_usd=cost["estimated_usd"],
+                unpriced_calls=cost["unpriced_calls"],
+            )
+        cost = estimate_external(
+            entries,
+            complete=len(records) <= ENTRY_LIMIT,
+            diffbot_plan=self.diffbot_plan,
+        )
+        return cost | {"job_id": job_id, "rows": rows}
 
     def costs(self, period):
         end = now()
@@ -216,6 +264,11 @@ async def ingest(request: Request):
 @app.get("/usage")
 def usage(hours: int = Query(default=24, ge=1, le=168)):
     return store.usage(hours)
+
+
+@app.get("/report-job-usage")
+def report_job_usage(job_id: UUID):
+    return store.job_usage(str(job_id))
 
 
 @app.get("/costs")

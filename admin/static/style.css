@@ -420,6 +420,31 @@ td small {
   gap: 16px;
   margin-bottom: 24px;
 }
+.job-lookup {
+  padding: 0 25px 18px;
+  color: #435b65;
+  font-size: 12px;
+}
+.job-lookup > div {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0;
+}
+.job-lookup input {
+  width: 29em;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #d9e2e5;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+}
+.job-lookup button {
+  flex-shrink: 0;
+}
+#report-job-status {
+  overflow-wrap: anywhere;
+}
 #gcp-summary[hidden] + .cost-card {
   grid-column: 1 / -1;
 }

@@ -18,6 +18,13 @@ class LocalSource:
         self.status_url = os.getenv("LOCAL_BACKEND_STATUS_URL", "")
         self.status_token = os.getenv("ADMIN_STATUS_TOKEN", "")
 
+    def job_usage(self, job_id):
+        with requests.Session() as session:
+            session.trust_env = False
+            return read(
+                session, "http://usage-store:8080/report-job-usage", {"job_id": job_id}
+            )
+
     def snapshot(self, hours):
         with requests.Session() as session:
             session.trust_env = False
