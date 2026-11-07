@@ -36,6 +36,10 @@ def iso(value):
     return value.isoformat().replace("+00:00", "Z")
 
 
+def time_key(value):
+    return value.astimezone(UTC).isoformat(timespec="microseconds")
+
+
 def connection_status(url, token, get=None):
     if not url or len(token) < 32:
         return {"state": "not_configured"}
@@ -177,6 +181,18 @@ def summarize(entries):
                     if type(value) is int and value >= 0:
                         row["token_sums"][field] += value
                         row["token_observations"][field] += 1
+        else:
+            continue
+
+        raw_time = event.get("timestamp") or entry.get("timestamp")
+        if not isinstance(raw_time, str) or not raw_time:
+            continue
+        try:
+            event_time = time_key(parse_start(raw_time))
+        except (ValueError, OverflowError):
+            continue
+        if event_time > row.get("last_event_at", ""):
+            row["last_event_at"] = event_time
     return {
         "providers": sorted(providers.values(), key=lambda r: r["provider"]),
         "routes": sorted(routes.values(), key=lambda r: -r["requests"]),

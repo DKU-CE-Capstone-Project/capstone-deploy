@@ -58,7 +58,9 @@ def test_ledger_deduplicates_retries_and_keeps_late_events_in_cumulative_cost(
             "prompt" not in row[0]
             for row in db.execute("SELECT payload FROM usage_events")
         )
-    assert restarted.usage(24)["observed_events"] == 1
+    usage = restarted.usage(24)
+    assert usage["observed_events"] == 1
+    assert usage["providers"][0]["last_event_at"] == "2026-11-06T10:00:00.000000+00:00"
     assert restarted.costs("day")["calls"] == 1
     assert restarted.costs("month")["calls"] == 2
     cumulative = restarted.costs("all")

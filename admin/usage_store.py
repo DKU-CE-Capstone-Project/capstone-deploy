@@ -14,7 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from history import MAX_GROUPS
 from periods import parse_start, window
 from pricing import COST_FIELDS, estimate_external
-from sources import TOKEN_FIELDS, UTC, iso, now, provider_usage_key, summarize
+from sources import TOKEN_FIELDS, iso, now, provider_usage_key, summarize, time_key
 
 ENTRY_LIMIT = 10_000
 MAX_BATCH_BYTES = 8 * 1024 * 1024
@@ -35,10 +35,6 @@ LABEL_FIELDS = {
 }
 LABEL = re.compile(r"[-a-zA-Z0-9_./:{}]+")
 EXTERNAL_KINDS = {"sdk_call", "http_attempt", "cache_hit"}
-
-
-def time_key(value):
-    return value.astimezone(UTC).isoformat(timespec="microseconds")
 
 
 def event_row(record, received_at):
@@ -143,7 +139,7 @@ class UsageStore:
         start = end - timedelta(hours=hours)
         with self.connect() as db:
             rows = db.execute(
-                """SELECT payload FROM usage_events WHERE event_time >= ? AND event_time < ?
+                """SELECT event_time, payload FROM usage_events WHERE event_time >= ? AND event_time < ?
                    ORDER BY event_time DESC, event_id LIMIT ?""",
                 (time_key(start), time_key(end), ENTRY_LIMIT + 1),
             ).fetchall()
@@ -154,7 +150,8 @@ class UsageStore:
             "complete": len(rows) <= ENTRY_LIMIT,
             "entry_limit": ENTRY_LIMIT,
             **summarize(
-                {"jsonPayload": json.loads(row[0])} for row in rows[:ENTRY_LIMIT]
+                {"timestamp": event_time, "jsonPayload": json.loads(payload)}
+                for event_time, payload in rows[:ENTRY_LIMIT]
             ),
         }
 

@@ -72,14 +72,17 @@ test('report job lookup renders observed tokens and partial pricing, then clears
 
 test('partial token coverage, HTTP versus SDK, and log cap stay visible', () => {
   const {context,nodes} = setup();
-  context.data = overview({state:'ok',complete:false,providers:[{provider:'<script>private</script>',model:'fixture',operation:'generate',stage:'analysis',service_tier:'standard',http_attempts:0,sdk_calls:2,cache_hits:1,errors:0,cancelled:1,token_observations:{input_tokens:1,output_tokens:0},token_sums:{input_tokens:120,output_tokens:0}}]});
+  context.data = overview({state:'ok',complete:false,providers:[{provider:'<script>private</script>',model:'fixture',operation:'generate',stage:'analysis',service_tier:'standard',http_attempts:0,sdk_calls:2,cache_hits:1,errors:0,cancelled:1,token_observations:{input_tokens:1,output_tokens:0},token_sums:{input_tokens:120,output_tokens:0},last_event_at:'2026-11-06T15:12:34.000000+00:00'}],
+    routes:[{method:'GET',route:'/api/v2/maps/{map_id}',requests:1,errors:0}]});
   vm.runInContext('render(data)', context);
   const cells = nodes.get('usage').children[0].children;
   assert.equal(cells[0].textContent, '<script>private</script>');
-  assert.equal(cells[2].textContent, '미관측');
-  assert.equal(cells[3].textContent, '2');
-  assert.equal(cells[6].textContent, '120 (일부)');
-  assert.equal(cells[7].textContent, '미제공');
+  assert.match(cells[2].textContent, /2026\. 11\. 7\. .*12:12:34/);
+  assert.equal(cells[3].textContent, '미관측');
+  assert.equal(cells[4].textContent, '2');
+  assert.equal(cells[7].textContent, '120 (일부)');
+  assert.equal(cells[8].textContent, '미제공');
+  assert.equal(nodes.get('routes').children[0].children[2].textContent, '미제공');
   assert.match(nodes.get('notice').textContent, /일부 이벤트/);
 });
 

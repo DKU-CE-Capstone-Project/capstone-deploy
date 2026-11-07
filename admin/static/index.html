@@ -107,7 +107,7 @@
         <div class="panel-title">
           <div>
             <h2>공급자별 사용량</h2>
-            <p>공급자 · 모델 · 작업 단계별로 관측한 호출과 토큰</p>
+            <p>공급자 · 모델 · 작업 단계별 호출, 토큰 및 조회 기간 내 마지막 기록</p>
           </div>
           <span id="usage-state" class="pill">조회 중</span>
         </div>
@@ -117,6 +117,7 @@
               <tr>
                 <th>공급자 / 모델</th>
                 <th>작업 / 단계</th>
+                <th>최근 기록 (KST)</th>
                 <th>HTTP 요청</th>
                 <th>SDK 호출</th>
                 <th>캐시 재사용</th>
@@ -141,7 +142,7 @@
         <div class="panel-title">
           <div>
             <h2>경로별 요청</h2>
-            <p>경로별 요청 수와 오류 응답</p>
+            <p>경로별 요청 수, 오류 응답 및 조회 기간 내 마지막 요청</p>
           </div>
         </div>
         <div class="table-wrap">
@@ -150,6 +151,7 @@
               <tr>
                 <th>메서드</th>
                 <th>API 경로</th>
+                <th>최근 요청 (KST)</th>
                 <th>요청</th>
                 <th>오류 (4xx · 5xx)</th>
               </tr>

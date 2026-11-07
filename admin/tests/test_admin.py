@@ -74,20 +74,30 @@ def test_duplicate_entries_missing_usage_cache_and_reexecution():
 def test_explicit_http_attempts_remain_separate_from_sdk_and_routes():
     result = sources.summarize(
         [
-            entry("1", "http_attempt", outcome="error"),
-            entry("2"),
+            entry(
+                "1",
+                "http_attempt",
+                outcome="error",
+                timestamp="2026-11-06T10:00:00.100Z",
+            ),
+            entry("2", timestamp="2026-11-06T19:00:00+09:00"),
             entry(
                 "3",
                 "api_request",
                 route="/api/v2/maps/{map_id}",
                 method="GET",
                 outcome="success",
-            ),
+            )
+            | {"timestamp": "2026-11-06T10:01:00Z"},
+            entry("4", "cache_hit", timestamp="invalid"),
         ]
     )
     row = result["providers"][0]
     assert row["http_attempts"] == 1 and row["sdk_calls"] == 1 and row["errors"] == 1
+    assert row["cache_hits"] == 1
+    assert row["last_event_at"] == "2026-11-06T10:00:00.100000+00:00"
     assert result["routes"][0]["requests"] == 1
+    assert result["routes"][0]["last_event_at"] == "2026-11-06T10:01:00.000000+00:00"
 
 
 def test_embedding_input_counts_remain_separate_from_response_usage():

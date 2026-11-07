@@ -268,6 +268,7 @@ function render(data) {
     const tr = document.createElement("tr");
     cell(tr, row.provider, row.model);
     cell(tr, row.operation, `${row.stage} · ${row.service_tier}`);
+    cell(tr, stamp(row.last_event_at));
     cell(
       tr,
       row.sdk_calls && !row.http_attempts
@@ -287,6 +288,7 @@ function render(data) {
     const tr = document.createElement("tr");
     cell(tr, row.method);
     cell(tr, row.route);
+    cell(tr, stamp(row.last_event_at));
     cell(tr, row.requests.toLocaleString());
     cell(tr, row.errors.toLocaleString());
     $("routes").append(tr);
