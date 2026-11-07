@@ -109,7 +109,10 @@
             <h2>공급자별 사용량</h2>
             <p>공급자 · 모델 · 작업 단계별 호출, 토큰 및 조회 기간 내 마지막 기록</p>
           </div>
-          <span id="usage-state" class="pill">조회 중</span>
+          <div class="daily-actions">
+            <span id="usage-state" class="pill">조회 중</span>
+            <button id="external-daily-open" type="button" aria-haspopup="dialog" aria-label="외부 API 요청 모두 보기">모두 보기</button>
+          </div>
         </div>
         <div class="table-wrap">
           <table>
@@ -144,6 +147,7 @@
             <h2>경로별 요청</h2>
             <p>경로별 요청 수, 오류 응답 및 조회 기간 내 마지막 요청</p>
           </div>
+          <button id="service-daily-open" type="button" aria-haspopup="dialog" aria-label="서비스 API 요청 모두 보기">모두 보기</button>
         </div>
         <div class="table-wrap">
           <table>
@@ -163,6 +167,30 @@
           수집된 API 요청이 없습니다.
         </div>
       </section>
+      <dialog id="daily-dialog" aria-labelledby="daily-title">
+        <div class="panel-title">
+          <div>
+            <h2 id="daily-title">일별 API 요청</h2>
+            <p id="daily-description">한국 시간 기준으로 수집된 요청을 최신순으로 표시합니다.</p>
+          </div>
+          <button id="daily-close" type="button">닫기</button>
+        </div>
+        <form id="daily-form" class="daily-actions daily-controls">
+          <label for="daily-date">조회 날짜 (KST)</label>
+          <input id="daily-date" type="date" />
+          <button type="submit">조회</button>
+        </form>
+        <p id="daily-status" class="daily-status" role="status"></p>
+        <div id="daily-results" class="table-wrap" tabindex="0" role="region" aria-label="선택한 날짜의 요청 목록" hidden>
+          <table aria-labelledby="daily-title">
+            <thead><tr id="daily-head"></tr></thead>
+            <tbody id="daily-rows"></tbody>
+          </table>
+        </div>
+        <div class="daily-controls">
+          <button id="daily-more" type="button" hidden>더 보기</button>
+        </div>
+      </dialog>
       <section id="view-cost" role="tabpanel" aria-labelledby="tab-cost" tabindex="0" hidden>
         <div class="cost-summary-grid">
           <article id="gcp-summary" class="card cost-card">

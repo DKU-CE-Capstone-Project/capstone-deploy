@@ -4,6 +4,7 @@ import asyncio
 import hmac
 import os
 import time
+from datetime import date
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
@@ -89,6 +90,23 @@ async def report_job_usage(job_id: UUID):
                 "error": "리포트 작업 사용량을 조회하지 못했습니다. 잠시 후 다시 시도해 주세요."
             },
             status_code=503,
+        )
+
+
+@app.get("/api/usage/daily")
+async def daily_usage(
+    kind: Literal["external", "service"],
+    day: date | None = None,
+    cursor: str | None = Query(default=None, max_length=100, pattern=r"^[^|]+\|[^|]+$"),
+):
+    if day in (date.min, date.max) or (cursor and day is None):
+        return JSONResponse({"error": "조회 날짜를 확인해 주세요."}, status_code=422)
+    params = {"kind": kind, "day": day.isoformat() if day else None, "cursor": cursor}
+    try:
+        return await asyncio.to_thread(source.daily_usage, params)
+    except Exception:  # noqa: BLE001 — sanitize collector failures
+        return JSONResponse(
+            {"error": "일별 요청을 조회하지 못했습니다."}, status_code=503
         )
 
 

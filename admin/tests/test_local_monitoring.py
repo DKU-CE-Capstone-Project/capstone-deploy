@@ -144,7 +144,94 @@ def test_report_job_lookup_migrates_existing_ledger_and_counts_each_call_once(
     assert critic["token_observations"]["output_tokens"] == 0
 
 
-def test_vm_job_lookup_requires_private_token_and_forwards_validated_id(monkeypatch):
+def test_daily_requests_use_korean_midnight_and_paginate_matching_events(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        usage_store, "now", lambda: datetime(2026, 11, 8, 0, tzinfo=timezone.utc)
+    )
+    monkeypatch.setattr(usage_store, "DAILY_PAGE_SIZE", 2)
+    ledger = usage_store.UsageStore(tmp_path / "ledger.sqlite3")
+    monkeypatch.setattr(usage_store, "store", ledger)
+
+    def record(index, timestamp, kind="http_attempt"):
+        return {
+            "source": "stdout",
+            "log": json.dumps(
+                {
+                    "event_type": "econmind_usage",
+                    "schema_version": 1,
+                    "event_id": f"{index:032x}",
+                    "timestamp": timestamp,
+                    "kind": kind,
+                    "provider": "naver",
+                    "operation": f"operation_{index}",
+                    "route": "/api/v2/maps",
+                    "method": "POST",
+                    "outcome": "success",
+                    "prompt": "private",
+                }
+            ),
+        }
+
+    midnight = "2026-11-06T15:00:00Z"
+    boundary = record(1, midnight)
+    with TestClient(usage_store.app) as client:
+        ledger.ingest(
+            [
+                boundary,
+                boundary,
+                record(2, midnight, "sdk_call"),
+                record(3, midnight),
+                record(4, "2026-11-06T14:59:59Z"),
+                record(5, "2026-11-07T15:00:00Z", "cache_hit"),
+                record(6, "2026-11-07T15:00:00Z", "api_request"),
+            ]
+        )
+        path = "/usage/daily"
+        external = {"kind": "external"}
+        first = client.get(path, params=external).json()
+        assert first["date"] == "2026-11-07"
+        assert [row["operation"] for row in first["rows"]] == [
+            "operation_3",
+            "operation_2",
+        ]
+        assert first["rows"][1]["kind"] == "sdk_call"
+        assert not {"prompt", "route", "event_id"} & first["rows"][0].keys()
+
+        ledger.ingest([record(7, "2026-11-07T14:59:59Z")])
+        next_page = client.get(
+            path,
+            params=external | {"day": first["date"], "cursor": first["next_cursor"]},
+        ).json()
+        assert [row["operation"] for row in next_page["rows"]] == ["operation_1"]
+        assert next_page["next_cursor"] is None
+
+        previous = client.get(path, params=external | {"day": "2026-11-06"}).json()
+        assert [row["operation"] for row in previous["rows"]] == ["operation_4"]
+        service = client.get(path, params={"kind": "service"}).json()
+        assert service["date"] == "2026-11-08"
+        assert service["rows"] == [
+            {
+                "timestamp": "2026-11-07T15:00:00.000000+00:00",
+                "route": "/api/v2/maps",
+                "method": "POST",
+                "outcome": "success",
+            }
+        ]
+        assert (
+            client.get(path, params=external | {"day": "2026-11-08"}).json()["rows"]
+            == []
+        )
+        assert (
+            client.get(
+                path, params=external | {"cursor": first["next_cursor"]}
+            ).status_code
+            == 422
+        )
+
+
+def test_vm_usage_queries_require_private_token_and_forward_filters(monkeypatch):
     import vm_source
 
     token = "a" * 32
@@ -156,6 +243,14 @@ def test_vm_job_lookup_requires_private_token_and_forwards_validated_id(monkeypa
 
     def read(session, url, params):
         assert session.headers["Authorization"] == "Bearer " + token
+        if url.endswith("/api/usage/daily"):
+            assert params == {"kind": "service", "day": "2026-11-07", "cursor": None}
+            return {
+                "state": "ok",
+                "date": params["day"],
+                "rows": [],
+                "next_cursor": None,
+            }
         assert url == "http://10.0.0.2:18090/api/report-job-usage"
         assert params == {"job_id": job_id}
         return {"state": "no_data", "job_id": job_id}
@@ -167,6 +262,11 @@ def test_vm_job_lookup_requires_private_token_and_forwards_validated_id(monkeypa
     response = client.get(path, headers={"Authorization": "Bearer " + token})
     assert response.status_code == 200
     assert response.json() == {"state": "no_data", "job_id": job_id}
+    path = "/api/usage/daily?kind=service&day=2026-11-07"
+    assert client.get(path).status_code == 403
+    response = client.get(path, headers={"Authorization": "Bearer " + token})
+    assert response.status_code == 200
+    assert response.json()["date"] == "2026-11-07"
 
 
 def test_local_overview_returns_usage_when_host_collector_is_down(monkeypatch):

@@ -23,6 +23,19 @@ let lastCosts;
 let localMode = false;
 const costPeriods = { gcp: "all", external: "all" };
 const costPeriodLabels = { all: "누적", day: "하루", week: "7일", month: "한 달" };
+const dailyViews = {
+  external: {
+    title: "외부 API 일별 요청",
+    description: "HTTP 요청과 SDK 호출을 구분해 최신순으로 표시합니다.",
+    columns: ["시각 (KST)", "공급자 / 모델", "작업 / 단계", "유형", "결과", "입력 토큰", "출력 토큰"],
+  },
+  service: {
+    title: "서비스 API 일별 요청",
+    description: "서비스 API 요청을 최신순으로 표시합니다.",
+    columns: ["시각 (KST)", "메서드", "API 경로", "결과"],
+  },
+};
+let dailyUsage;
 function costQuery() {
   return `gcp_period=${costPeriods.gcp}&external_period=${costPeriods.external}`;
 }
@@ -114,12 +127,13 @@ function tokens(row, key) {
 }
 const metricNames = { cpu: "CPU", memory: "메모리", disk: "디스크" };
 const minute = 60000;
-function clock(time, seconds = false) {
+function clock(time, seconds = false, timeZone) {
   return new Date(time).toLocaleTimeString("ko-KR", {
     hour: "2-digit",
     minute: "2-digit",
     ...(seconds ? { second: "2-digit" } : {}),
     hour12: false,
+    timeZone,
   });
 }
 function historyWindow(points, updatedAt) {
@@ -295,6 +309,90 @@ function render(data) {
   }
   $("routes-empty").hidden = !!usage.routes?.length;
 }
+function dailyRow(kind, row) {
+  const tr = document.createElement("tr");
+  const outcomes = {success: "성공", error: "오류", cancelled: "취소"};
+  cell(tr, clock(row.timestamp, true, "Asia/Seoul"));
+  if (kind === "external") {
+    cell(tr, row.provider ?? "—", row.model);
+    cell(tr, row.operation ?? "—", row.stage);
+    cell(tr, row.kind === "http_attempt" ? "HTTP 요청" : "SDK 호출");
+  } else {
+    cell(tr, row.method ?? "—");
+    cell(tr, row.route ?? "—");
+  }
+  cell(tr, Object.hasOwn(outcomes, row.outcome) ? outcomes[row.outcome] : "—");
+  if (kind === "external") {
+    const counted = row.token_count_status === "ok" ? row.counted_input_tokens : null;
+    cell(tr, row.input_tokens?.toLocaleString() ?? (counted != null ? `${counted.toLocaleString()} (계수)` : "—"));
+    cell(tr, row.output_tokens?.toLocaleString() ?? "—");
+  }
+  return tr;
+}
+async function loadDailyUsage(day = "", cursor = null) {
+  const dialog = $("daily-dialog");
+  const status = $("daily-status");
+  const more = $("daily-more");
+  const results = $("daily-results");
+  const rows = $("daily-rows");
+  const date = $("daily-date");
+  const request = {kind: dailyUsage.kind, day, cursor};
+  dailyUsage = request;
+  if (!cursor) {
+    rows.replaceChildren();
+    results.hidden = true;
+    more.hidden = true;
+  }
+  more.disabled = true;
+  status.textContent = "요청 기록 조회 중…";
+  const params = new URLSearchParams({kind: request.kind});
+  if (day) params.set("day", day);
+  if (cursor) params.set("cursor", cursor);
+  try {
+    const response = await fetch(`/api/usage/daily?${params}`, {cache: "no-store"});
+    if (!response.ok) throw Error();
+    const data = await response.json();
+    if (dailyUsage !== request || !dialog.open) return;
+    if (data.state === "not_configured") {
+      status.textContent = "SQLite 수집기가 연결된 관리자에서 일별 요청을 조회할 수 있습니다.";
+      return;
+    }
+    if (data.state !== "ok") throw Error();
+    request.day = data.date;
+    if (!day && !date.value) date.value = data.date;
+    request.cursor = data.next_cursor;
+    for (const row of data.rows) rows.append(dailyRow(request.kind, row));
+    const count = rows.childElementCount;
+    results.hidden = count === 0;
+    more.hidden = !request.cursor;
+    status.textContent = count
+      ? `${count.toLocaleString()}건 표시${request.cursor ? "" : " · 전체"}`
+      : "선택한 날짜에 수집된 요청이 없습니다.";
+  } catch {
+    if (dailyUsage === request && dialog.open) {
+      status.textContent = "요청 기록을 조회하지 못했습니다. 다시 시도해 주세요.";
+    }
+  } finally {
+    if (dailyUsage === request) more.disabled = false;
+  }
+}
+function openDailyUsage(kind) {
+  const view = dailyViews[kind];
+  $("daily-title").textContent = view.title;
+  $("daily-description").textContent = view.description;
+  $("daily-date").value = "";
+  const head = $("daily-head");
+  head.replaceChildren();
+  for (const column of view.columns) {
+    const th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = column;
+    head.append(th);
+  }
+  dailyUsage = {kind};
+  $("daily-dialog").showModal();
+  return loadDailyUsage();
+}
 function money(value, currency = "USD") {
   if (!Number.isFinite(value)) return "—";
   if (currency === "USD" && value > 0 && value < 0.000001) return "< US$0.000001";
@@ -458,6 +556,14 @@ async function refresh() {
 }
 $("refresh").addEventListener("click", refresh);
 $("period").addEventListener("change", refresh);
+$("external-daily-open").addEventListener("click", () => openDailyUsage("external"));
+$("service-daily-open").addEventListener("click", () => openDailyUsage("service"));
+$("daily-close").addEventListener("click", () => $("daily-dialog").close());
+$("daily-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  return loadDailyUsage($("daily-date").value);
+});
+$("daily-more").addEventListener("click", () => loadDailyUsage(dailyUsage.day, dailyUsage.cursor));
 $("report-job-form").addEventListener("submit", lookupReportJob);
 for (const component of ["gcp", "external"]) {
   for (const period of Object.keys(costPeriodLabels)) {

@@ -39,6 +39,9 @@ class VmSource(CloudSource):
     def job_usage(self, job_id):
         return self.collector_data("/api/report-job-usage", {"job_id": job_id})
 
+    def daily_usage(self, params):
+        return self.collector_data("/api/usage/daily", params)
+
     def snapshot(self, hours):
         try:
             data = self.collector_data("/api/overview", {"hours": hours})

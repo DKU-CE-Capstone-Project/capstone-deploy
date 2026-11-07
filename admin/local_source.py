@@ -25,6 +25,11 @@ class LocalSource:
                 session, "http://usage-store:8080/report-job-usage", {"job_id": job_id}
             )
 
+    def daily_usage(self, params):
+        with requests.Session() as session:
+            session.trust_env = False
+            return read(session, "http://usage-store:8080/usage/daily", params)
+
     def snapshot(self, hours):
         with requests.Session() as session:
             session.trust_env = False

@@ -5,18 +5,19 @@ import os
 import re
 import sqlite3
 from contextlib import asynccontextmanager, closing
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Literal
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from history import MAX_GROUPS
-from periods import parse_start, window
+from periods import KST, parse_start, window
 from pricing import COST_FIELDS, estimate_external
 from sources import TOKEN_FIELDS, iso, now, provider_usage_key, summarize, time_key
 
 ENTRY_LIMIT = 10_000
+DAILY_PAGE_SIZE = 100
 MAX_BATCH_BYTES = 8 * 1024 * 1024
 EVENT_ID = re.compile(r"[a-f0-9-]{16,64}", re.IGNORECASE)
 # Retain only fields used for counts or estimates. Report job IDs are stored
@@ -35,6 +36,25 @@ LABEL_FIELDS = {
 }
 LABEL = re.compile(r"[-a-zA-Z0-9_./:{}]+")
 EXTERNAL_KINDS = {"sdk_call", "http_attempt", "cache_hit"}
+DAILY_FILTERS = {
+    "external": "json_extract(payload, '$.kind') IN ('http_attempt', 'sdk_call')",
+    "service": "json_extract(payload, '$.kind') = 'api_request'",
+}
+DAILY_FIELDS = {
+    "external": (
+        "kind",
+        "provider",
+        "model",
+        "operation",
+        "stage",
+        "outcome",
+        "input_tokens",
+        "output_tokens",
+        "counted_input_tokens",
+        "token_count_status",
+    ),
+    "service": ("method", "route", "outcome"),
+}
 
 
 def event_row(record, received_at):
@@ -119,6 +139,10 @@ class UsageStore:
                 db.execute("""CREATE INDEX IF NOT EXISTS usage_event_job
                     ON usage_events(job_id, event_time DESC, event_id)
                     WHERE job_id IS NOT NULL""")
+                for kind, predicate in DAILY_FILTERS.items():
+                    db.execute(f"""CREATE INDEX IF NOT EXISTS usage_daily_{kind}
+                        ON usage_events(event_time DESC, event_id DESC)
+                        WHERE {predicate}""")
 
     def ingest(self, records):
         received_at = now()
@@ -184,6 +208,45 @@ class UsageStore:
             diffbot_plan=self.diffbot_plan,
         )
         return cost | {"job_id": job_id, "rows": rows}
+
+    def daily_usage(self, kind, day, cursor):
+        predicate = DAILY_FILTERS[kind]
+        with self.connect() as db:
+            if day is None:
+                latest = db.execute(
+                    f"""SELECT event_time FROM usage_events WHERE {predicate}
+                        ORDER BY event_time DESC, event_id DESC LIMIT 1"""
+                ).fetchone()
+                timestamp = parse_start(latest[0]) if latest else now()
+                day = timestamp.astimezone(KST).date()
+            start = datetime.combine(day, time.min, KST)
+            end = time_key(start + timedelta(days=1))
+            # Comparing both columns keeps the cursor stable when timestamps tie.
+            before = cursor.split("|", 1) if cursor else (end, "")
+            rows = db.execute(
+                f"""SELECT event_time, event_id, payload FROM usage_events
+                    WHERE {predicate} AND event_time >= ? AND event_time < ?
+                      AND (event_time, event_id) < (?, ?)
+                    ORDER BY event_time DESC, event_id DESC LIMIT ?""",
+                (time_key(start), end, *before, DAILY_PAGE_SIZE + 1),
+            ).fetchall()
+
+        page = rows[:DAILY_PAGE_SIZE]
+        events = []
+        for event_time, _, payload in page:
+            event = json.loads(payload)
+            events.append(
+                {"timestamp": event_time}
+                | {key: event[key] for key in DAILY_FIELDS[kind] if key in event}
+            )
+        return {
+            "state": "ok",
+            "date": day.isoformat(),
+            "rows": events,
+            "next_cursor": "|".join(page[-1][:2])
+            if len(rows) > DAILY_PAGE_SIZE
+            else None,
+        }
 
     def costs(self, period):
         end = now()
@@ -261,6 +324,17 @@ async def ingest(request: Request):
 @app.get("/usage")
 def usage(hours: int = Query(default=24, ge=1, le=168)):
     return store.usage(hours)
+
+
+@app.get("/usage/daily")
+def daily_usage(
+    kind: Literal["external", "service"],
+    day: date | None = None,
+    cursor: str | None = Query(default=None, max_length=100, pattern=r"^[^|]+\|[^|]+$"),
+):
+    if day in (date.min, date.max) or (cursor and day is None):
+        raise HTTPException(422, "Invalid daily usage query")
+    return store.daily_usage(kind, day, cursor)
 
 
 @app.get("/report-job-usage")

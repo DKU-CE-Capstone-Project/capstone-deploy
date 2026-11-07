@@ -204,6 +204,9 @@ class CloudSource:
     def job_usage(self, _job_id):
         return {"state": "not_configured"}
 
+    def daily_usage(self, _params):
+        return {"state": "not_configured"}
+
     def __init__(self):
         self.project = os.getenv("GCP_PROJECT_ID", "")
         self.instance = os.getenv("GCP_VM_INSTANCE_ID", "")
