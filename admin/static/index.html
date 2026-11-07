@@ -114,6 +114,9 @@
             <button id="external-daily-open" type="button" aria-haspopup="dialog" aria-label="외부 API 요청 모두 보기">모두 보기</button>
           </div>
         </div>
+        <div class="cache-summary">
+          내부 캐시 재사용 <strong id="internal-cache-hits">—</strong>
+        </div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -133,7 +136,7 @@
           </table>
         </div>
         <div id="usage-empty" class="empty" hidden>
-          수집된 사용량 이벤트가 없습니다.
+          수집된 외부 API 사용량이 없습니다.
         </div>
         <div class="footnote">
           SDK 내부 재시도는 HTTP 요청 수에 포함하지 않습니다. 토큰은 응답에서

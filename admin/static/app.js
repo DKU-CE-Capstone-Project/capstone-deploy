@@ -277,8 +277,14 @@ function render(data) {
   $("usage-state").textContent =
     (states[usage.state] || "확인 불가") +
     (usage.complete === false ? " · 일부" : "");
-  $("usage").replaceChildren();
+  const usageRows = $("usage");
+  usageRows.replaceChildren();
+  let internalCacheHits = 0;
   for (const row of usage.providers || []) {
+    if (row.provider === "application") {
+      internalCacheHits += row.cache_hits;
+      continue;
+    }
     const tr = document.createElement("tr");
     cell(tr, row.provider, row.model);
     cell(tr, row.operation, `${row.stage} · ${row.service_tier}`);
@@ -294,9 +300,12 @@ function render(data) {
     cell(tr, `${row.errors} / ${row.cancelled}`);
     cell(tr, tokens(row, "input_tokens"));
     cell(tr, tokens(row, "output_tokens"));
-    $("usage").append(tr);
+    usageRows.append(tr);
   }
-  $("usage-empty").hidden = !!usage.providers?.length;
+  $("internal-cache-hits").textContent = usage.state === "ok"
+    ? `${internalCacheHits.toLocaleString("ko-KR")}회`
+    : "—";
+  $("usage-empty").hidden = usageRows.children.length > 0;
   $("routes").replaceChildren();
   for (const row of usage.routes || []) {
     const tr = document.createElement("tr");
@@ -504,8 +513,9 @@ function renderCosts(data) {
     ? `${external.priced_calls} / ${external.calls}회 산정${external.counted_calls ? ` · 입력 계수 ${external.counted_calls}회` : ""}${external.unpriced_calls ? ` · 미산정 ${external.unpriced_calls}회` : ""}${external.logs_complete === false ? " · 기록 일부" : ""}`
     : states[external.state] || "확인 불가";
   $("external-cost-state").textContent = external.state === "ok" ? external.complete ? "예상액" : "일부 산정" : states[external.state] || "확인 불가";
+  const externalProviders = (external.providers || []).filter((row) => row.provider !== "application");
   $("external-cost-rows").replaceChildren();
-  for (const row of external.providers || []) {
+  for (const row of externalProviders) {
     const tr = document.createElement("tr");
     cell(tr, row.provider, row.models.join(", "));
     cell(tr, row.calls.toLocaleString(), row.cache_hits ? `앱 캐시 ${row.cache_hits}회 별도` : "");
@@ -525,8 +535,10 @@ function renderCosts(data) {
     tr.append(td);
     $("external-cost-rows").append(tr);
   }
-  $("external-cost-empty").hidden = !!external.providers?.length;
-  $("external-cost-empty").textContent = external.state === "no_data" ? "관측된 API 사용량이 없습니다." : states[external.state] || "확인 불가";
+  $("external-cost-empty").hidden = externalProviders.length > 0;
+  $("external-cost-empty").textContent = external.state === "ok" || external.state === "no_data"
+    ? "관측된 외부 API 사용량이 없습니다."
+    : states[external.state] || "확인 불가";
   const archiveStates = {ok: "보관 중", archive_pending: "첫 저장 대기", permission_required: "조회 권한 필요", unavailable: "조회 실패", query_pending: "집계 중"};
   $("external-cost-note").textContent = `단가 확인 ${external.pricing_date || "—"} · 누적 기록 ${archiveStates[external.archive_state] || "확인 대기"}. ${(external.assumptions || []).join(" ")}`;
 }

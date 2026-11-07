@@ -376,6 +376,16 @@ button:disabled {
   align-items: center;
   gap: 8px;
 }
+.cache-summary {
+  padding: 12px 24px;
+  background: #edf5f1;
+  color: #435b65;
+  font-size: 12px;
+}
+.cache-summary strong {
+  margin-inline-start: 8px;
+  color: #153e44;
+}
 #external-daily-open,
 #service-daily-open,
 #daily-close {

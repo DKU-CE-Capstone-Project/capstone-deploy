@@ -248,6 +248,50 @@ test('cost view shows credit consumption, dated snapshots and unpriced usage', (
   assert.equal(vm.runInContext('creditsUsed(20,"KRW")',context), vm.runInContext('money(-20,"KRW")',context));
 });
 
+test('application cache hits are summarized separately from both provider tables', () => {
+  const {context, nodes} = setup('#cost');
+  const costs = costData();
+  const cache = {provider: 'application', cache_hits: 4};
+  const cacheCostRow = {...cache, models: ['—'], calls: 0, priced_calls: 0, unpriced_calls: 0, estimated_usd: 0, basis: []};
+  costs.external.providers.unshift(cacheCostRow);
+  context.data = costs;
+  vm.runInContext('renderCosts(data)', context);
+  assert.deepEqual(nodes.get('external-cost-rows').children.map(row => row.children[0].textContent), ['gemini']);
+  assert.equal(nodes.get('external-cost-empty').hidden, true);
+
+  Object.assign(costs.external, {providers: [cacheCostRow], complete: true, calls: 0, priced_calls: 0, unpriced_calls: 0, estimated_usd: 0});
+  vm.runInContext('renderCosts(data)', context);
+  assert.equal(nodes.get('external-cost-rows').children.length, 0);
+  assert.equal(nodes.get('external-cost-empty').hidden, false);
+  assert.match(nodes.get('external-cost-empty').textContent, /관측된 외부 API 사용량이 없습니다/);
+
+  const cacheUsageRow = {
+    ...cache, operation: 'keyword_map', http_attempts: 0, sdk_calls: 0, errors: 0, cancelled: 0,
+    token_observations: {}, token_sums: {},
+  };
+  context.data = overview({state: 'ok', providers: [
+    cacheUsageRow,
+    {...cacheUsageRow, operation: 'report_v2', cache_hits: 2},
+    {...cacheUsageRow, provider: 'gemini', operation: 'embed_vector', cache_hits: 1},
+  ]});
+  vm.runInContext('render(data)', context);
+  const rows = nodes.get('usage').children;
+  assert.deepEqual(rows.map(row => row.children[0].textContent), ['gemini']);
+  assert.equal(rows[0].children[5].textContent, '1');
+  assert.equal(nodes.get('internal-cache-hits').textContent, '6회');
+  assert.equal(nodes.get('usage-empty').hidden, true);
+
+  context.data.usage.providers = [cacheUsageRow];
+  vm.runInContext('render(data)', context);
+  assert.equal(nodes.get('usage').children.length, 0);
+  assert.equal(nodes.get('usage-empty').hidden, false);
+  assert.equal(nodes.get('internal-cache-hits').textContent, '4회');
+
+  context.data = overview({state: 'unavailable'});
+  vm.runInContext('render(data)', context);
+  assert.equal(nodes.get('internal-cache-hits').textContent, '—');
+});
+
 test('counted embedding inputs and cost coverage remain distinct from response usage', () => {
   const {context,nodes} = setup('#cost');
   context.data = costData();
