@@ -88,7 +88,7 @@ def main():
                 try:
                     request(base, "/")
                     break
-                except URLError:
+                except (URLError, ConnectionError, TimeoutError):
                     if attempt == 39:
                         raise
                     time.sleep(0.1)
