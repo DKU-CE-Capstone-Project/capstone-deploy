@@ -12,3 +12,8 @@ docker-compose.override.yaml
 
 # Local metadata backups must remain private and untracked.
 .local/
+
+# Admin local environment and build caches
+admin/.venv/
+.pytest_cache/
+.ruff_cache/

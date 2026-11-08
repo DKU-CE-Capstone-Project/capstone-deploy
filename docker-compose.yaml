@@ -161,9 +161,10 @@ services:
     mem_limit: 256m
 
   econmind-api:
-    build: ../backend
+    build: ${BACKEND_BUILD_CONTEXT:-../backend}
     environment: &local-backend-env
       <<: *news-map-env
+      ADMIN_STATUS_TOKEN: ${ADMIN_STATUS_TOKEN:-}
       NATS_URL: nats://nats:4222
       REDIS_URL: redis://redis:6379/0
       DEMO_MODE: "true"
@@ -193,7 +194,7 @@ services:
     mem_limit: 768m
 
   econmind-worker:
-    build: ../backend
+    build: ${BACKEND_BUILD_CONTEXT:-../backend}
     command: ["python", "-m", "app.worker"]
     environment: *local-backend-env
     depends_on:
@@ -202,7 +203,7 @@ services:
     mem_limit: 512m
 
   econmind-v2-worker:
-    build: ../backend
+    build: ${BACKEND_BUILD_CONTEXT:-../backend}
     command: ["python", "-m", "app.v2.report_worker"]
     environment: *local-backend-env
     depends_on:
@@ -216,7 +217,7 @@ services:
 
   frontend:
     build:
-      context: ../frontend
+      context: ${FRONTEND_BUILD_CONTEXT:-../frontend}
       args:
         VITE_API_BASE: ""
     ports:

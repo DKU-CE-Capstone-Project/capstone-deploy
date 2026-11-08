@@ -1,0 +1,25 @@
+# Run the VM collectors beside the existing application.
+services:
+  admin:
+    build: !reset null
+    image: ${MONITOR_IMAGE:?Set the monitoring image}
+    environment:
+      ADMIN_READ_TOKEN: ${ADMIN_READ_TOKEN:?Set a private collector token}
+    ports: !override
+      - "${MONITOR_COLLECTOR_IP:?Set the VM private IP}:${MONITOR_ADMIN_PORT:-18090}:8080"
+    mem_limit: 192m
+
+  host-metrics:
+    build: !reset null
+    image: ${MONITOR_IMAGE:?Set the monitoring image}
+    mem_limit: 128m
+
+  usage-store:
+    build: !reset null
+    image: ${MONITOR_IMAGE:?Set the monitoring image}
+    environment:
+      API_COST_MEASUREMENT_START: ${API_COST_MEASUREMENT_START:?Set the original API baseline}
+    mem_limit: 256m
+
+  usage-forwarder:
+    profiles: [fluentd-push]

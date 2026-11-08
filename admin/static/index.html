@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>EconMind · 운영 현황</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <aside>
+      <a class="brand" href="/">e<span>●</span> EconMind</a>
+      <div class="workspace">OPERATIONS</div>
+      <nav class="tab-nav" role="tablist" aria-label="관리자 메뉴">
+        <button id="tab-overview" class="nav active" type="button" role="tab" aria-selected="true" aria-controls="view-overview"><span aria-hidden="true">◫</span> 운영 현황</button>
+        <button id="tab-external-api" class="nav" type="button" role="tab" aria-selected="false" aria-controls="view-external-api" tabindex="-1"><span aria-hidden="true">↗</span> 외부 API 사용량</button>
+        <button id="tab-service-api" class="nav" type="button" role="tab" aria-selected="false" aria-controls="view-service-api" tabindex="-1"><span aria-hidden="true">⇄</span> 서비스 API 요청</button>
+        <button id="tab-cost" class="nav" type="button" role="tab" aria-selected="false" aria-controls="view-cost" tabindex="-1"><span aria-hidden="true">₩</span> 비용</button>
+      </nav>
+      <div class="aside-bottom">
+        관리자 전용<br /><span id="monitoring-source">Cloud Monitoring · Cloud Logging</span>
+      </div>
+    </aside>
+    <main>
+      <header>
+        <div>
+          <div id="page-eyebrow" class="eyebrow">ECONMIND / OVERVIEW</div>
+          <h1 id="page-title">운영 현황</h1>
+          <p id="page-description">VM 리소스와 DB 연결 상태를 확인합니다.</p>
+        </div>
+        <div id="data-controls" class="controls">
+          <div id="usage-period" hidden>
+            <label for="period">조회 기간</label>
+            <select id="period">
+              <option value="1">최근 1시간</option>
+              <option value="24" selected>최근 24시간</option>
+              <option value="168">최근 7일</option>
+            </select>
+          </div>
+          <button id="refresh">새로고침 ↻</button>
+        </div>
+      </header>
+      <div id="data-meta" class="meta">
+        <span id="project">프로젝트 확인 중</span
+        ><span id="updated" aria-live="polite">조회 중…</span>
+      </div>
+      <div id="notice" class="notice" role="status" hidden></div>
+      <section id="view-overview" class="cards" role="tabpanel" aria-labelledby="tab-overview" tabindex="0">
+        <article class="card">
+          <div class="card-label">
+            MongoDB <span class="tag">연결 상태</span>
+          </div>
+          <div id="db" class="metric">—</div>
+          <p id="db-note">연결 상태 조회 중</p>
+        </article>
+        <article id="cpu-card" class="card metric-card history-card">
+          <div class="card-label"><span id="cpu-label">VM CPU</span> <span class="tag">사용률</span></div>
+          <button id="cpu-trigger" class="gauge-control" type="button"
+            aria-label="VM CPU 최근 30분 그래프 보기" aria-expanded="false" aria-controls="cpu-history">
+            <span id="cpu-gauge" class="gauge is-empty"><span id="cpu" class="metric gauge-value">—</span></span>
+          </button>
+          <p id="cpu-note">지표 조회 중</p>
+          <p class="history-hint">마우스를 올리면 최근 30분 ↗</p>
+          <div id="cpu-history" class="metric-history" role="region" aria-label="VM CPU 최근 30분 사용률" hidden>
+            <div class="history-heading"><h3>CPU · 최근 30분</h3><button id="cpu-history-close" class="history-close" type="button" aria-label="CPU 그래프 닫기">×</button></div>
+            <div class="history-plot">
+              <div class="history-y-axis" aria-hidden="true"><span>100%</span><span>75%</span><span>50%</span><span>25%</span><span>0%</span></div>
+              <div id="cpu-chart" class="history-chart" role="img" aria-label="CPU 사용률 막대그래프, 0에서 100%"></div>
+            </div>
+            <div class="history-x-axis"><span id="cpu-start">—</span><span id="cpu-end">—</span></div>
+            <p id="cpu-history-note" class="history-note">최근 30분 데이터 조회 중</p>
+          </div>
+        </article>
+        <article id="memory-card" class="card metric-card history-card">
+          <div class="card-label">
+            <span id="memory-label">VM 메모리</span> <span id="memory-source" class="tag">OPS AGENT</span>
+          </div>
+          <button id="memory-trigger" class="gauge-control" type="button"
+            aria-label="VM 메모리 최근 30분 그래프 보기" aria-expanded="false" aria-controls="memory-history">
+            <span id="memory-gauge" class="gauge is-empty"><span id="memory" class="metric gauge-value">—</span></span>
+          </button>
+          <p id="memory-capacity" class="capacity" title="사용량 / 전체 용량">— GiB / — GiB</p>
+          <p id="memory-note">지표 조회 중</p>
+          <p class="history-hint">마우스를 올리면 최근 30분 ↗</p>
+          <div id="memory-history" class="metric-history" role="region" aria-label="VM 메모리 최근 30분 사용률" hidden>
+            <div class="history-heading"><h3>메모리 · 최근 30분</h3><button id="memory-history-close" class="history-close" type="button" aria-label="메모리 그래프 닫기">×</button></div>
+            <div class="history-plot">
+              <div class="history-y-axis" aria-hidden="true"><span>100%</span><span>75%</span><span>50%</span><span>25%</span><span>0%</span></div>
+              <div id="memory-chart" class="history-chart" role="img" aria-label="메모리 사용률 막대그래프, 0에서 100%"></div>
+            </div>
+            <div class="history-x-axis"><span id="memory-start">—</span><span id="memory-end">—</span></div>
+            <p id="memory-history-note" class="history-note">최근 30분 데이터 조회 중</p>
+          </div>
+        </article>
+        <article class="card metric-card">
+          <div class="card-label">
+            <span id="disk-label">VM 디스크</span> <span id="disk-source" class="tag">OPS AGENT</span>
+          </div>
+          <div id="disk-gauge" class="gauge is-empty" role="img" aria-label="VM 디스크 사용률 조회 중">
+            <span id="disk" class="metric gauge-value">—</span>
+          </div>
+          <p id="disk-capacity" class="capacity" title="사용량 / 전체 용량">— GiB / — GiB</p>
+          <p id="disk-note">지표 조회 중</p>
+        </article>
+      </section>
+      <section id="view-external-api" class="panel" role="tabpanel" aria-labelledby="tab-external-api" tabindex="0" hidden>
+        <div class="panel-title">
+          <div>
+            <h2>공급자별 사용량</h2>
+            <p>공급자 · 모델 · 작업 단계별 호출, 토큰 및 조회 기간 내 마지막 기록</p>
+          </div>
+          <div class="daily-actions">
+            <span id="usage-state" class="pill">조회 중</span>
+            <button id="external-daily-open" type="button" aria-haspopup="dialog" aria-label="외부 API 요청 모두 보기">모두 보기</button>
+          </div>
+        </div>
+        <div class="cache-summary">
+          내부 캐시 재사용 <strong id="internal-cache-hits">—</strong>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>공급자 / 모델</th>
+                <th>작업 / 단계</th>
+                <th>최근 기록 (KST)</th>
+                <th>HTTP 요청</th>
+                <th>SDK 호출</th>
+                <th>캐시 재사용</th>
+                <th>오류 / 취소</th>
+                <th>입력 토큰</th>
+                <th>출력 토큰</th>
+              </tr>
+            </thead>
+            <tbody id="usage"></tbody>
+          </table>
+        </div>
+        <div id="usage-empty" class="empty" hidden>
+          수집된 외부 API 사용량이 없습니다.
+        </div>
+        <div class="footnote">
+          SDK 내부 재시도는 HTTP 요청 수에 포함하지 않습니다. 토큰은 응답에서
+          확인된 값만 합산하며 캐시 입력·사고 토큰은 중복 합산하지 않습니다.
+          공급자 청구 금액과 다를 수 있습니다.
+        </div>
+      </section>
+      <section id="view-service-api" class="panel" role="tabpanel" aria-labelledby="tab-service-api" tabindex="0" hidden>
+        <div class="panel-title">
+          <div>
+            <h2>경로별 요청</h2>
+            <p>경로별 요청 수, 오류 응답 및 조회 기간 내 마지막 요청</p>
+          </div>
+          <button id="service-daily-open" type="button" aria-haspopup="dialog" aria-label="서비스 API 요청 모두 보기">모두 보기</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>메서드</th>
+                <th>API 경로</th>
+                <th>최근 요청 (KST)</th>
+                <th>요청</th>
+                <th>오류 (4xx · 5xx)</th>
+              </tr>
+            </thead>
+            <tbody id="routes"></tbody>
+          </table>
+        </div>
+        <div id="routes-empty" class="empty" hidden>
+          수집된 API 요청이 없습니다.
+        </div>
+      </section>
+      <dialog id="daily-dialog" aria-labelledby="daily-title">
+        <div class="panel-title">
+          <div>
+            <h2 id="daily-title">일별 API 요청</h2>
+            <p id="daily-description">한국 시간 기준으로 수집된 요청을 최신순으로 표시합니다.</p>
+          </div>
+          <button id="daily-close" type="button">닫기</button>
+        </div>
+        <form id="daily-form" class="daily-actions daily-controls">
+          <label for="daily-date">조회 날짜 (KST)</label>
+          <input id="daily-date" type="date" />
+          <button type="submit">조회</button>
+        </form>
+        <p id="daily-status" class="daily-status" role="status"></p>
+        <div id="daily-results" class="table-wrap" tabindex="0" role="region" aria-label="선택한 날짜의 요청 목록" hidden>
+          <table aria-labelledby="daily-title">
+            <thead><tr id="daily-head"></tr></thead>
+            <tbody id="daily-rows"></tbody>
+          </table>
+        </div>
+        <div class="daily-controls">
+          <button id="daily-more" type="button" hidden>더 보기</button>
+        </div>
+      </dialog>
+      <section id="view-cost" role="tabpanel" aria-labelledby="tab-cost" tabindex="0" hidden>
+        <div class="cost-summary-grid">
+          <article id="gcp-summary" class="card cost-card">
+            <div class="card-label">GCP 크레딧 사용액 <span id="gcp-cost-state" class="tag">조회 중</span></div>
+            <div class="cost-periods" role="group" aria-label="GCP 집계 기간">
+              <button type="button" id="gcp-period-all" class="selected" aria-pressed="true">누적</button>
+              <button type="button" id="gcp-period-day" aria-pressed="false">하루</button>
+              <button type="button" id="gcp-period-week" aria-pressed="false">7일</button>
+              <button type="button" id="gcp-period-month" aria-pressed="false">한 달</button>
+            </div>
+            <div id="gcp-credits-used" class="metric">—</div>
+            <p id="gcp-selected-period">누적 · 프로젝트에 적용된 크레딧</p>
+            <p id="gcp-measurement-start" class="cost-detail">측정 시작 확인 중</p>
+          </article>
+          <article class="card cost-card">
+            <div class="card-label">외부 API 예상 비용 <span id="external-cost-period" class="tag">누적</span></div>
+            <div class="cost-periods" role="group" aria-label="외부 API 집계 기간">
+              <button type="button" id="external-period-all" class="selected" aria-pressed="true">누적</button>
+              <button type="button" id="external-period-day" aria-pressed="false">하루</button>
+              <button type="button" id="external-period-week" aria-pressed="false">7일</button>
+              <button type="button" id="external-period-month" aria-pressed="false">한 달</button>
+            </div>
+            <div id="external-cost-total" class="metric">—</div>
+            <p>관측된 사용량 중 계산 가능한 금액</p>
+            <p id="external-cost-coverage" class="cost-detail">조회 중</p>
+            <p id="external-measurement-start" class="cost-detail">측정 시작 확인 중</p>
+          </article>
+        </div>
+        <section class="panel" aria-labelledby="report-job-title">
+          <div class="panel-title">
+            <div>
+              <h2 id="report-job-title">리포트 작업별 사용량</h2>
+              <p>수집된 외부 API 호출의 단계별 토큰과 예상 비용을 조회합니다.</p>
+            </div>
+          </div>
+          <form id="report-job-form" class="job-lookup">
+            <label for="report-job-id">리포트 작업 ID</label>
+            <div>
+              <input id="report-job-id" type="text" required maxlength="36" autocomplete="off" spellcheck="false" aria-describedby="report-job-help">
+              <button id="report-job-submit" type="submit">조회</button>
+            </div>
+            <p id="report-job-help">v2 리포트 작업 응답의 job_id를 입력하세요.</p>
+          </form>
+          <p id="report-job-status" class="footnote" role="status" hidden></p>
+          <div id="report-job-results" hidden>
+            <p id="report-job-totals" class="footnote"></p>
+            <div class="table-wrap">
+              <table aria-label="리포트 작업의 단계별 사용량과 예상 비용">
+                <thead><tr><th>단계</th><th>공급자 / 모델</th><th>관측 호출</th><th>입력 토큰</th><th>출력 토큰</th><th>예상 비용</th></tr></thead>
+                <tbody id="report-job-rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+        <div id="gcp-details" class="panel">
+          <div class="panel-title">
+            <div><h2>GCP 서비스별 크레딧 사용액</h2><p id="gcp-cost-period">조회 기간 확인 중</p></div>
+            <a id="gcp-report-link" class="source-link" href="https://console.cloud.google.com/billing" target="_blank" rel="noopener noreferrer">GCP 보고서 ↗</a>
+          </div>
+          <div class="table-wrap"><table class="cost-table">
+            <thead><tr><th>서비스</th><th>사용 크레딧</th></tr></thead>
+            <tbody id="gcp-cost-rows"></tbody>
+          </table></div>
+          <div id="gcp-cost-empty" class="empty" hidden>크레딧 데이터 조회 중</div>
+          <div id="gcp-cost-note" class="footnote">Cloud Billing 데이터를 조회합니다.</div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">
+            <div><h2>외부 API별 예상 비용</h2><p id="external-cost-source">공시 단가 · USD · 관측된 프로젝트 사용량 기준</p><p id="external-cost-range">조회 기간 확인 중</p></div>
+            <span id="external-cost-state" class="pill">조회 중</span>
+          </div>
+          <div class="table-wrap"><table class="cost-table">
+            <thead><tr><th>공급자 / 모델</th><th>관측 호출</th><th>예상 비용</th><th>산정 범위</th><th>계산 기준</th></tr></thead>
+            <tbody id="external-cost-rows"></tbody>
+          </table></div>
+          <div id="external-cost-empty" class="empty" hidden>관측된 API 사용량이 없습니다.</div>
+          <div id="external-cost-note" class="footnote">관측된 사용량에 공개 단가를 적용합니다.</div>
+        </div>
+      </section>
+      <footer id="data-footer">
+        DB 표시는 백엔드에서 MongoDB까지의 연결 결과입니다. 호스트 전원 상태를 의미하지 않습니다. · 60초마다 자동 갱신
+      </footer>
+    </main>
+  </body>
+</html>

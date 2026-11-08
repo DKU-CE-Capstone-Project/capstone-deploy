@@ -1,0 +1,30 @@
+# Opt-in overlay for the API and both workers in an existing Compose project.
+x-usage-logging: &usage-logging
+  driver: fluentd
+  options:
+    fluentd-address: "127.0.0.1:${MONITOR_FORWARD_PORT:-24224}"
+    fluentd-async: "true"
+    fluentd-request-ack: "true"
+    fluentd-buffer-limit: "1024"
+    fluentd-write-timeout: "3s"
+    fluentd-read-timeout: "3s"
+    tag: econmind.usage
+
+services:
+  econmind-api:
+    logging: !override
+      <<: *usage-logging
+
+  econmind-worker:
+    logging: !override
+      <<: *usage-logging
+
+  econmind-v2-worker:
+    logging: !override
+      <<: *usage-logging
+
+  admin:
+    environment:
+      LOCAL_BACKEND_STATUS_URL: http://econmind-api:8000/internal/admin/status
+      ADMIN_STATUS_TOKEN: ${ADMIN_STATUS_TOKEN:-}
+    networks: [default, monitoring]

@@ -45,8 +45,10 @@ def main():
         source = (ROOT / "Caddyfile").read_text()
         config = source.replace("econmind.duckdns.org {", "http://:8080 {")
         config = config.replace("frontend:80", "127.0.0.1:8081")
+        config = config.replace("econmind-api:8000", "127.0.0.1:8083")
         config = config.replace("http://35.216.13.110 {", "http://:8082 {")
         config += '\nhttp://:8081 {\n respond "upstream-authorization={http.request.header.Authorization}" 200\n}\n'
+        config += '\nhttp://:8083 {\n @valid header Authorization "Bearer fixture-status-token"\n respond @valid "mongodb=connected" 200\n respond "Forbidden" 403\n}\n'
         (temp / "Caddyfile").write_text(config)
         mount = ["-v", f"{temp / 'Caddyfile'}:/etc/caddy/Caddyfile:ro"]
         docker("run", "--rm", "--env-file", str(envfile), *mount, IMAGE,
@@ -86,7 +88,7 @@ def main():
                 try:
                     request(base, "/")
                     break
-                except URLError:
+                except (URLError, ConnectionError, TimeoutError):
                     if attempt == 39:
                         raise
                     time.sleep(0.1)
@@ -104,6 +106,14 @@ def main():
                     assert headers.get("WWW-Authenticate", "").startswith("Basic ")
                 status, _, body = request(base, path, method, valid)
                 assert status == 200 and body == "upstream-authorization=", (method, path, status)
+            for auth in (None, wrong, valid, "Bearer wrong-token"):
+                status, _, _ = request(base, "/internal/admin/status", auth=auth)
+                assert status == 403, ("status bearer route", status)
+            status, _, body = request(base, "/internal/admin/status", auth="Bearer fixture-status-token")
+            assert status == 200 and body == "mongodb=connected"
+            for path in ("/internal/admin/status/", "/internal/admin/status/extra"):
+                assert request(base, path, auth="Bearer fixture-status-token")[0] == 401
+            print("Caddy: exact status route preserves bearer; Basic and wrong bearer denied by status upstream; suffix routes retain team auth")
             print(f"Caddy: {len(cases)} UI/API/method cases block missing/wrong credentials; valid credentials reach upstream without Authorization")
             print("Caddy: syntax/provisioning valid; Compose refuses missing/empty credentials and preserves bcrypt $ characters")
         finally:

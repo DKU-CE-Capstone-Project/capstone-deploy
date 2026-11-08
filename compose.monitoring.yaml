@@ -1,0 +1,67 @@
+# Standalone monitoring on the local Docker Engine.
+x-monitor-python: &monitor-python
+  build: ./admin
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  networks: [monitoring]
+
+services:
+  admin:
+    <<: *monitor-python
+    environment:
+      ADMIN_SOURCE: local
+      MONITOR_HOST_NAME: ${MONITOR_HOST_NAME:-Docker 호스트}
+    ports:
+      - "127.0.0.1:${MONITOR_ADMIN_PORT:-8090}:8080"
+
+  host-metrics:
+    <<: *monitor-python
+    command: ["uvicorn", "host_metrics:app", "--host", "0.0.0.0", "--port", "8080", "--no-access-log"]
+    volumes:
+      - type: volume
+        source: monitor_proc
+        target: /host/proc
+        read_only: true
+        volume: {nocopy: true}
+      - type: volume
+        source: monitor_disk
+        target: /host/disk
+        read_only: true
+        volume: {nocopy: true}
+
+  usage-store:
+    <<: *monitor-python
+    command: ["uvicorn", "usage_store:app", "--host", "0.0.0.0", "--port", "8080", "--no-access-log"]
+    environment:
+      DIFFBOT_COST_PLAN: ${DIFFBOT_COST_PLAN:-unknown}
+    volumes:
+      - monitor_usage:/data
+
+  usage-forwarder:
+    image: fluent/fluent-bit:4.2.3@sha256:a5761fa961cb22dd0875883a4d446b1acd99d4935d77358aa9f50ee177e44fe2
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ./monitoring/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+    ports:
+      # The Docker logging driver connects from the daemon, not the app container.
+      - "127.0.0.1:${MONITOR_FORWARD_PORT:-24224}:24224"
+    networks: [monitoring]
+
+networks:
+  monitoring: {}
+
+volumes:
+  monitor_proc:
+    driver: local
+    driver_opts:
+      type: none
+      device: /proc
+      o: bind,ro
+  monitor_disk: {}
+  monitor_usage: {}

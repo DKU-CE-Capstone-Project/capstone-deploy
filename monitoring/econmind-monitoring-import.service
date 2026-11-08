@@ -1,0 +1,15 @@
+[Unit]
+Description=Import EconMind application usage from Docker logs
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/econmind-monitoring/monitoring/import-docker-usage.py --cursor /var/lib/econmind-monitoring/docker-since
+StateDirectory=econmind-monitoring
+StateDirectoryMode=0700
+TimeoutStartSec=90
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
