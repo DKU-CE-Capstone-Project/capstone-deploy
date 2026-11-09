@@ -1,0 +1,49 @@
+# 홈 서버 -> GCP VM MongoDB 역방향 SSH 터널 (autossh + systemd)
+#
+# 설치 위치: 홈 서버 /etc/systemd/system/econmind-mongo-tunnel.service
+# 절차서:    docs/RUNBOOK-20261108-mongo-tunnel-autossh.md
+# 값:        /etc/econmind/mongo-tunnel.env (예시 mongo-tunnel.env.example)
+
+[Unit]
+Description=EconMind MongoDB reverse SSH tunnel to GCP VM (autossh)
+After=network-online.target docker.service
+Wants=network-online.target
+# 재시도 횟수 제한을 끈다. 회선이 오래 끊겨도 포기하지 않아야 한다.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=econmind-tunnel
+Group=econmind-tunnel
+EnvironmentFile=/etc/econmind/mongo-tunnel.env
+# 첫 ssh 시도가 바로 실패해도 autossh가 포기하지 않게 한다.
+Environment=AUTOSSH_GATETIME=0
+# -M 0: autossh 감시 포트를 쓰지 않고 ServerAlive로 끊김을 감지한다.
+# ExitOnForwardFailure: GCP 쪽 포트를 못 잡으면 ssh를 끝내서 재시도하게 한다.
+ExecStart=/usr/bin/autossh -M 0 -N -T \
+  -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  -o ConnectTimeout=15 \
+  -o BatchMode=yes \
+  -o IdentitiesOnly=yes \
+  -o StrictHostKeyChecking=yes \
+  -o UserKnownHostsFile=${TUNNEL_KNOWN_HOSTS} \
+  -i ${TUNNEL_IDENTITY_FILE} \
+  -p ${GCP_SSH_PORT} \
+  -R ${TUNNEL_REMOTE_BIND}:${TUNNEL_REMOTE_PORT}:${TUNNEL_LOCAL_HOST}:${TUNNEL_LOCAL_PORT} \
+  ${GCP_SSH_USER}@${GCP_SSH_HOST}
+# autossh 자신이 종료되거나 죽어도 systemd가 다시 띄운다.
+Restart=always
+RestartSec=10
+# autossh는 SIGTERM을 받으면 종료 코드 1로 끝난다. 정상 stop이 failed로 표시되지 않게 한다.
+SuccessExitStatus=1
+TimeoutStopSec=15
+NoNewPrivileges=true
+ProtectSystem=strict
+# 키와 known_hosts는 /var/lib/econmind-tunnel 아래에 둔다. /home은 이 서비스에서 보이지 않는다.
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
