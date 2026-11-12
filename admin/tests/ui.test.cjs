@@ -157,6 +157,48 @@ test('report job lookup shows that job\'s agent diagnostics and hides the table 
   assert.equal(nodes.get('report-job-diagnostic-rows').children.length, 0);
 });
 
+test('a job with diagnostics but no provider call shows them instead of reporting no usage', async () => {
+  const onlyDiagnostics = '97a0bf73-21b5-4d89-85cb-1303a010d56a';
+  const withCalls = '2f34a75b-977e-4fc7-afc6-2b7b73b4bb55';
+  const empty = '0b0f6a52-6f0c-4c8e-9a51-6c1a3c1f7d10';
+  // The collector reports "no_data" whenever the job has no provider call.
+  const none = {state:'no_data', estimated_usd:null, calls:0, priced_calls:0, unpriced_calls:0, logs_complete:true, rows:[]};
+  const {context, nodes} = setup('#cost', async (url) => {
+    const job_id = url.slice(-36);
+    if (job_id === onlyDiagnostics) return {ok:true, json:async () => ({...none, job_id, diagnostics:diagnostics()})};
+    if (job_id === empty) return {ok:true, json:async () => ({...none, job_id, diagnostics:[]})};
+    return {ok:true, json:async () => ({
+      state:'ok', job_id, estimated_usd:0.000925, calls:1, priced_calls:1, unpriced_calls:0, logs_complete:true, diagnostics:[],
+      rows:[{stage:'bear', operation:'generate', provider:'gemini', model:'gemini-3.5-flash-lite',
+        sdk_calls:1, http_attempts:0, cache_hits:0, estimated_usd:0.000925, unpriced_calls:0,
+        token_observations:{input_tokens:1, output_tokens:1}, token_sums:{input_tokens:1000, output_tokens:200}}],
+    })};
+  });
+  const submit = () => nodes.get('report-job-form').submit({preventDefault() {}});
+  const input = context.document.getElementById('report-job-id');
+  input.value = onlyDiagnostics;
+  await submit();
+  assert.equal(nodes.get('report-job-results').hidden, false);
+  assert.equal(nodes.get('report-job-usage').hidden, true);
+  assert.equal(nodes.get('report-job-diagnostics').hidden, false);
+  assert.equal(nodes.get('report-job-diagnostic-rows').children.length, 2);
+  assert.equal(nodes.get('report-job-rows').children.length, 0);
+  assert.equal(nodes.get('report-job-status').textContent, onlyDiagnostics + ' · 수집된 외부 API 호출 없음 · 에이전트 응답 진단 1,202건');
+  assert.doesNotMatch(nodes.get('report-job-status').textContent, /사용량이 없습니다|예상 비용/);
+
+  input.value = withCalls;
+  await submit();
+  assert.equal(nodes.get('report-job-usage').hidden, false);
+  assert.equal(nodes.get('report-job-diagnostics').hidden, true);
+  assert.equal(nodes.get('report-job-rows').children.length, 1);
+  assert.match(nodes.get('report-job-status').textContent, /1 \/ 1회 산정/);
+
+  input.value = empty;
+  await submit();
+  assert.equal(nodes.get('report-job-results').hidden, true);
+  assert.match(nodes.get('report-job-status').textContent, /사용량이 없습니다/);
+});
+
 test('gauges show observed percentages including zero and keep missing data distinct', () => {
   const {context, nodes} = setup();
   context.data = overview();

@@ -256,6 +256,16 @@ def test_agent_diagnostics_are_kept_without_changing_calls_or_costs(
         "agent_output_normalized",
     ]
 
+    # A response can be rejected without any provider call, for example when
+    # no provider is configured. "state" still describes provider calls only.
+    other_job = "2f34a75b-977e-4fc7-afc6-2b7b73b4bb55"
+    alone = rejected | {"event_id": "e" * 32, "job_id": other_job}
+    ledger.ingest([{"source": "stdout", "log": json.dumps(alone)}])
+    job = ledger.job_usage(other_job)
+    assert job["state"] == "no_data" and job["calls"] == 0 and job["rows"] == []
+    assert [row["events"] for row in job["diagnostics"]] == [1]
+    assert ledger.job_usage(job_id)["diagnostics"][0]["events"] == 1
+
 
 def test_daily_requests_use_korean_midnight_and_paginate_matching_events(
     tmp_path, monkeypatch

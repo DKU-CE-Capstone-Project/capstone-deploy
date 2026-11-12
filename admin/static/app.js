@@ -475,8 +475,21 @@ async function lookupReportJob(event) {
       status.textContent = "SQLite 수집기가 연결된 관리자에서 작업별 사용량을 조회할 수 있습니다.";
       return;
     }
-    if (data.state === "no_data") {
+    // "no_data" describes provider calls only. A response can be rejected
+    // without one, for example when no provider is configured.
+    const noCalls = data.state === "no_data";
+    const diagnosticRows = data.diagnostics || [];
+    if (noCalls && !diagnosticRows.length) {
       status.textContent = "이 작업 ID로 수집된 사용량이 없습니다.";
+      return;
+    }
+    for (const row of diagnosticRows) diagnostics.append(diagnosticRow(row, false));
+    $("report-job-diagnostics").hidden = !diagnosticRows.length;
+    $("report-job-usage").hidden = noCalls;
+    if (noCalls) {
+      const count = diagnosticRows.reduce((total, row) => total + row.events, 0);
+      status.textContent = `${data.job_id} · 수집된 외부 API 호출 없음 · 에이전트 응답 진단 ${count.toLocaleString()}건`;
+      results.hidden = false;
       return;
     }
     for (const row of data.rows) {
@@ -490,8 +503,6 @@ async function lookupReportJob(event) {
         row.unpriced_calls ? `미산정 ${row.unpriced_calls}회` : "");
       rows.append(tr);
     }
-    for (const row of data.diagnostics || []) diagnostics.append(diagnosticRow(row, false));
-    $("report-job-diagnostics").hidden = diagnostics.children.length === 0;
     const amount = Number.isFinite(data.estimated_usd) ? money(data.estimated_usd) : "미산정";
     const missing = data.unpriced_calls ? ` · 미산정 ${data.unpriced_calls}회` : "";
     const capped = data.logs_complete ? "" : " · 조회 한도 도달, 일부 이벤트";
