@@ -144,6 +144,119 @@ def test_report_job_lookup_migrates_existing_ledger_and_counts_each_call_once(
     assert critic["token_observations"]["output_tokens"] == 0
 
 
+def test_agent_diagnostics_are_kept_without_changing_calls_or_costs(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        usage_store, "now", lambda: datetime(2026, 11, 12, 3, tzinfo=timezone.utc)
+    )
+    job_id = "97a0bf73-21b5-4d89-85cb-1303a010d56a"
+    base = {
+        "event_type": "econmind_usage",
+        "schema_version": 1,
+        "timestamp": "2026-11-12T02:00:00Z",
+        "job_id": job_id,
+        "stage": "bear",
+    }
+    call = base | {
+        "event_id": "a" * 32,
+        "kind": "sdk_call",
+        "provider": "gemini",
+        "operation": "generate",
+        "model": "gemini-3.5-flash-lite",
+        "service_tier": "standard",
+        "input_tokens": 1000,
+        "output_tokens": 200,
+        "thought_tokens": 50,
+    }
+    diagnostic = base | {"provider": "application", "operation": "debate_analyst"}
+    rejected = diagnostic | {
+        "event_id": "b" * 32,
+        "kind": "agent_output_validation",
+        "outcome": "error",
+        "error_type": "invalid_argument_schema",
+        "validation_issues": [
+            {
+                "path": ["arguments", 0, "text"],
+                "type": "string_too_long",
+                "input": "private response",
+            },
+            {"path": ["private response"], "type": "missing"},
+        ],
+        "input_tokens": 7,
+        "response": "private response",
+    }
+    trimmed = diagnostic | {
+        "event_id": "c" * 32,
+        "kind": "agent_output_normalized",
+        "outcome": "success",
+        "discarded_arguments": 2,
+    }
+    ledger = usage_store.UsageStore(tmp_path / "ledger.sqlite3")
+    ledger.initialize()
+    ledger.ingest(
+        [
+            {"source": "stdout", "log": json.dumps(event)}
+            for event in (
+                call,
+                rejected,
+                rejected,
+                trimmed,
+                trimmed | {"event_id": "d" * 32, "kind": "agent_output_unknown"},
+            )
+        ]
+    )
+
+    with ledger.connect() as db:
+        stored = {
+            row[0]: (json.loads(row[1]), row[2], row[3])
+            for row in db.execute(
+                "SELECT event_id, payload, cost_key, job_id FROM usage_events"
+            )
+        }
+    assert stored.keys() == {"a" * 32, "b" * 32, "c" * 32}
+    payload, cost_key, stored_job = stored["b" * 32]
+    assert cost_key is None and stored_job == job_id
+    assert payload == {
+        "event_type": "econmind_usage",
+        "schema_version": 1,
+        "event_id": "b" * 32,
+        "kind": "agent_output_validation",
+        "provider": "application",
+        "operation": "debate_analyst",
+        "stage": "bear",
+        "outcome": "error",
+        "error_type": "invalid_argument_schema",
+        "validation_issues": [
+            {"path": ["arguments", 0, "text"], "type": "string_too_long"}
+        ],
+    }
+    assert stored["c" * 32][0]["discarded_arguments"] == 2
+    assert "error_type" not in stored["a" * 32][0]
+
+    usage = ledger.usage(24)
+    assert usage["observed_events"] == 3
+    assert [row["sdk_calls"] for row in usage["providers"]] == [1]
+    rejected_row, trimmed_row = usage["agent_diagnostics"]
+    assert rejected_row["events"] == 1
+    assert rejected_row["issues"] == [
+        {"path": "arguments.*.text", "type": "string_too_long", "count": 1}
+    ]
+    assert rejected_row["last_event_at"] == "2026-11-12T02:00:00.000000+00:00"
+    assert trimmed_row["kind"] == "agent_output_normalized"
+    assert trimmed_row["discarded_arguments"] == 2
+
+    assert ledger.costs("all")["calls"] == 1
+    assert len(ledger.daily_usage("external", None, None)["rows"]) == 1
+    job = ledger.job_usage(job_id)
+    assert job["calls"] == job["priced_calls"] == 1
+    assert job["estimated_usd"] == 0.000925
+    assert [row["kind"] for row in job["diagnostics"]] == [
+        "agent_output_validation",
+        "agent_output_normalized",
+    ]
+
+
 def test_daily_requests_use_korean_midnight_and_paginate_matching_events(
     tmp_path, monkeypatch
 ):

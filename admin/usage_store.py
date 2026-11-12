@@ -14,7 +14,16 @@ from fastapi.concurrency import run_in_threadpool
 from history import MAX_GROUPS
 from periods import KST, parse_start, window
 from pricing import COST_FIELDS, estimate_external
-from sources import TOKEN_FIELDS, iso, now, provider_usage_key, summarize, time_key
+from sources import (
+    AGENT_KINDS,
+    TOKEN_FIELDS,
+    iso,
+    now,
+    provider_usage_key,
+    summarize,
+    time_key,
+    validation_issues,
+)
 
 ENTRY_LIMIT = 10_000
 DAILY_PAGE_SIZE = 100
@@ -75,7 +84,7 @@ def event_row(record, received_at):
             or not isinstance(event_id, str)
             or not EVENT_ID.fullmatch(event_id)
             or not isinstance(kind, str)
-            or (kind not in EXTERNAL_KINDS and kind != "api_request")
+            or kind not in (*EXTERNAL_KINDS, *AGENT_KINDS, "api_request")
         ):
             return None
         timestamp = parse_start(event.get("timestamp"))
@@ -92,17 +101,21 @@ def event_row(record, received_at):
         "event_id": event_id,
         "kind": kind,
     }
-    for field in LABEL_FIELDS:
+    diagnostic = kind in AGENT_KINDS
+    for field in (*LABEL_FIELDS, "error_type") if diagnostic else LABEL_FIELDS:
         value = event.get(field)
         if isinstance(value, str) and len(value) <= 160 and LABEL.fullmatch(value):
             payload[field] = value
-    for field in TOKEN_FIELDS:
+    for field in ("discarded_arguments",) if diagnostic else TOKEN_FIELDS:
         value = event.get(field)
         if type(value) is int and 0 <= value < 2**63:
             payload[field] = value
+    if diagnostic and (issues := validation_issues(event)):
+        payload["validation_issues"] = issues
     cost_key = job_id = None
     if kind in EXTERNAL_KINDS:
         cost_key = json.dumps({field: payload.get(field) for field in COST_FIELDS})
+    if kind in EXTERNAL_KINDS or diagnostic:
         value = event.get("job_id")
         if isinstance(value, str):
             try:
@@ -193,7 +206,8 @@ class UsageStore:
                 entry
             )
 
-        rows = summarize(entries)["providers"]
+        summary = summarize(entries)
+        rows = summary["providers"]
         for row in rows:
             cost = estimate_external(
                 groups[provider_usage_key(row)], diffbot_plan=self.diffbot_plan
@@ -207,7 +221,11 @@ class UsageStore:
             complete=len(records) <= ENTRY_LIMIT,
             diffbot_plan=self.diffbot_plan,
         )
-        return cost | {"job_id": job_id, "rows": rows}
+        return cost | {
+            "job_id": job_id,
+            "rows": rows,
+            "diagnostics": summary["agent_diagnostics"],
+        }
 
     def daily_usage(self, kind, day, cursor):
         predicate = DAILY_FILTERS[kind]

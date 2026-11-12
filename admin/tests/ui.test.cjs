@@ -86,6 +86,77 @@ test('partial token coverage, HTTP versus SDK, and log cap stay visible', () => 
   assert.match(nodes.get('notice').textContent, /일부 이벤트/);
 });
 
+function diagnostics() {
+  return [
+    {stage:'bear', operation:'debate_analyst', kind:'agent_output_validation', error_type:'invalid_argument_schema', events:2, discarded_arguments:0,
+      issues:[{path:'arguments.*.text', type:'string_too_long', count:2}, {path:'', type:'missing', count:1}], last_event_at:'2026-11-06T15:12:34.000000+00:00'},
+    {stage:'<b>bull</b>', operation:'debate_analyst', kind:'agent_output_normalized', error_type:'—', events:1200, discarded_arguments:3400, issues:[]},
+  ];
+}
+
+test('agent diagnostics list format errors and trimmed arguments apart from provider calls', () => {
+  const {context, nodes} = setup();
+  context.data = overview({state:'ok', providers:[], routes:[], agent_diagnostics:diagnostics()});
+  vm.runInContext('render(data)', context);
+  assert.equal(nodes.get('usage').children.length, 0);
+  const [rejected, trimmed] = nodes.get('agent-diagnostics').children.map(row => row.children);
+  assert.equal(rejected.length, 6);
+  assert.equal(rejected[0].textContent, 'bear');
+  assert.equal(rejected[0].children[0].textContent, 'debate_analyst');
+  assert.equal(rejected[1].textContent, '응답 형식 오류');
+  assert.equal(rejected[1].children[0].textContent, 'invalid_argument_schema');
+  assert.match(rejected[2].textContent, /2026\. 11\. 7\. .*12:12:34/);
+  assert.equal(rejected[3].textContent, '2');
+  assert.equal(rejected[4].textContent, '—');
+  assert.equal(rejected[5].textContent, 'arguments.*.text · string_too_long ×2\n(최상위) · missing ×1');
+  assert.equal(rejected[5].className, 'issue-list');
+  assert.equal(trimmed[0].textContent, '<b>bull</b>');
+  assert.equal(trimmed[1].textContent, '논거 초과분 제외');
+  assert.equal(trimmed[1].children.length, 0);
+  assert.equal(trimmed[2].textContent, '미제공');
+  assert.equal(trimmed[3].textContent, '1,200');
+  assert.equal(trimmed[4].textContent, '3,400');
+  assert.equal(trimmed[5].textContent, '—');
+  assert.equal(nodes.get('agent-diagnostics-empty').hidden, true);
+
+  context.data.usage.agent_diagnostics = [];
+  vm.runInContext('render(data)', context);
+  assert.equal(nodes.get('agent-diagnostics').children.length, 0);
+  assert.equal(nodes.get('agent-diagnostics-empty').hidden, false);
+  assert.match(nodes.get('agent-diagnostics-empty').textContent, /진단이 없습니다/);
+
+  delete context.data.usage.agent_diagnostics;
+  vm.runInContext('render(data)', context);
+  assert.match(nodes.get('agent-diagnostics-empty').textContent, /수집기 버전/);
+  context.data = overview();
+  vm.runInContext('render(data)', context);
+  assert.match(nodes.get('agent-diagnostics-empty').textContent, /진단이 없습니다/);
+});
+
+test('report job lookup shows that job\'s agent diagnostics and hides the table without any', async () => {
+  const jobId = '97a0bf73-21b5-4d89-85cb-1303a010d56a';
+  const plainId = '2f34a75b-977e-4fc7-afc6-2b7b73b4bb55';
+  const {context, nodes} = setup('#cost', async (url) => ({ok:true, json:async () => ({
+    state:'ok', job_id:url.slice(-36), estimated_usd:0, calls:0, priced_calls:0, unpriced_calls:0, logs_complete:true, rows:[],
+    ...(url.endsWith(jobId) ? {diagnostics:diagnostics()} : {}),
+  })}));
+  const submit = () => nodes.get('report-job-form').submit({preventDefault() {}});
+  const input = context.document.getElementById('report-job-id');
+  input.value = jobId;
+  await submit();
+  const rows = nodes.get('report-job-diagnostic-rows').children;
+  assert.equal(nodes.get('report-job-diagnostics').hidden, false);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].children.length, 5);
+  assert.equal(rows[0].children[2].textContent, '2');
+  assert.equal(rows[1].children[3].textContent, '3,400');
+  input.value = plainId;
+  await submit();
+  assert.equal(nodes.get('report-job-results').hidden, false);
+  assert.equal(nodes.get('report-job-diagnostics').hidden, true);
+  assert.equal(nodes.get('report-job-diagnostic-rows').children.length, 0);
+});
+
 test('gauges show observed percentages including zero and keep missing data distinct', () => {
   const {context, nodes} = setup();
   context.data = overview();

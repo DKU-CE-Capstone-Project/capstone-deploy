@@ -36,6 +36,10 @@ const dailyViews = {
   },
 };
 let dailyUsage;
+const diagnosticKinds = {
+  agent_output_validation: "응답 형식 오류",
+  agent_output_normalized: "논거 초과분 제외",
+};
 function costQuery() {
   return `gcp_period=${costPeriods.gcp}&external_period=${costPeriods.external}`;
 }
@@ -110,6 +114,7 @@ function cell(row, text, detail) {
     td.append(small);
   }
   row.append(td);
+  return td;
 }
 function tokens(row, key) {
   const n = row.token_observations[key];
@@ -124,6 +129,20 @@ function tokens(row, key) {
   return n
     ? `${row.token_sums[key].toLocaleString()}${n < total ? " (일부)" : ""}`
     : "미제공";
+}
+function diagnosticRow(row, withTime) {
+  const tr = document.createElement("tr");
+  cell(tr, row.stage, row.operation);
+  cell(
+    tr,
+    Object.hasOwn(diagnosticKinds, row.kind) ? diagnosticKinds[row.kind] : row.kind,
+    row.error_type === "—" ? "" : row.error_type,
+  );
+  if (withTime) cell(tr, stamp(row.last_event_at));
+  cell(tr, row.events.toLocaleString());
+  cell(tr, row.kind === "agent_output_normalized" ? row.discarded_arguments.toLocaleString() : "—");
+  cell(tr, row.issues.map((issue) => `${issue.path || "(최상위)"} · ${issue.type} ×${issue.count}`).join("\n") || "—").className = "issue-list";
+  return tr;
 }
 const metricNames = { cpu: "CPU", memory: "메모리", disk: "디스크" };
 const minute = 60000;
@@ -306,6 +325,14 @@ function render(data) {
     ? `${internalCacheHits.toLocaleString("ko-KR")}회`
     : "—";
   $("usage-empty").hidden = usageRows.children.length > 0;
+  const diagnostics = $("agent-diagnostics");
+  diagnostics.replaceChildren();
+  for (const row of usage.agent_diagnostics || []) diagnostics.append(diagnosticRow(row, true));
+  $("agent-diagnostics-empty").hidden = diagnostics.children.length > 0;
+  // A collector from before this table omits the field; do not present that as "none".
+  $("agent-diagnostics-empty").textContent = usage.state === "ok" && !usage.agent_diagnostics
+    ? "수집기가 에이전트 응답 진단을 제공하지 않습니다. 수집기 버전을 확인해 주세요."
+    : "수집된 에이전트 응답 진단이 없습니다.";
   $("routes").replaceChildren();
   for (const row of usage.routes || []) {
     const tr = document.createElement("tr");
@@ -429,9 +456,11 @@ async function lookupReportJob(event) {
   const status = $("report-job-status");
   const results = $("report-job-results");
   const rows = $("report-job-rows");
+  const diagnostics = $("report-job-diagnostic-rows");
   status.hidden = false;
   results.hidden = true;
   rows.replaceChildren();
+  diagnostics.replaceChildren();
   input.disabled = button.disabled = true;
   status.textContent = "작업 사용량 조회 중…";
   try {
@@ -461,6 +490,8 @@ async function lookupReportJob(event) {
         row.unpriced_calls ? `미산정 ${row.unpriced_calls}회` : "");
       rows.append(tr);
     }
+    for (const row of data.diagnostics || []) diagnostics.append(diagnosticRow(row, false));
+    $("report-job-diagnostics").hidden = diagnostics.children.length === 0;
     const amount = Number.isFinite(data.estimated_usd) ? money(data.estimated_usd) : "미산정";
     const missing = data.unpriced_calls ? ` · 미산정 ${data.unpriced_calls}회` : "";
     const capped = data.logs_complete ? "" : " · 조회 한도 도달, 일부 이벤트";

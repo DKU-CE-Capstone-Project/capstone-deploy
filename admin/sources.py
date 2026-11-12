@@ -26,6 +26,11 @@ TOKEN_FIELDS = (
     "total_tokens",
     "cache_creation_tokens",
 )
+# Diagnostics about an agent's response format. They are not provider calls.
+AGENT_KINDS = ("agent_output_validation", "agent_output_normalized")
+ISSUE_CODE = re.compile(r"[A-Za-z0-9_.-]{1,64}")
+MAX_ISSUES = 8
+MAX_ISSUE_GROUPS = 5
 
 
 def now():
@@ -119,8 +124,32 @@ def provider_usage_key(event):
     )
 
 
+def validation_issues(event):
+    """Keep field locations and type codes only, never response values."""
+    raw = event.get("validation_issues")
+    issues = []
+    for issue in raw[:MAX_ISSUES] if isinstance(raw, list) else ():
+        path = issue.get("path") if isinstance(issue, dict) else None
+        code = issue.get("type") if isinstance(issue, dict) else None
+        if (
+            isinstance(path, list)
+            and len(path) <= 8
+            and isinstance(code, str)
+            and ISSUE_CODE.fullmatch(code)
+            and all(
+                type(part) is int
+                and 0 <= part < 2**31
+                or isinstance(part, str)
+                and ISSUE_CODE.fullmatch(part)
+                for part in path
+            )
+        ):
+            issues.append({"path": path, "type": code})
+    return issues
+
+
 def summarize(entries):
-    providers, routes, seen = {}, {}, set()
+    providers, routes, diagnostics, seen = {}, {}, {}, set()
     for entry in entries:
         event = entry.get("jsonPayload", {}) if isinstance(entry, dict) else {}
         if not isinstance(event, dict):
@@ -181,6 +210,28 @@ def summarize(entries):
                     if type(value) is int and value >= 0:
                         row["token_sums"][field] += value
                         row["token_observations"][field] += 1
+        elif kind in AGENT_KINDS:
+            stage, operation, error_type = (
+                value if isinstance(value, str) and value else "—"
+                for value in map(event.get, ("stage", "operation", "error_type"))
+            )
+            key = (stage, operation, kind, error_type)
+            row = diagnostics.setdefault(
+                key,
+                dict(zip(("stage", "operation", "kind", "error_type"), key))
+                | {"events": 0, "discarded_arguments": 0, "issues": {}},
+            )
+            row["events"] += 1
+            discarded = event.get("discarded_arguments")
+            if type(discarded) is int and discarded >= 0:
+                row["discarded_arguments"] += discarded
+            for issue in validation_issues(event):
+                # List positions vary per response. Group by field instead.
+                location = ".".join(
+                    "*" if type(part) is int else part for part in issue["path"]
+                )
+                group = (location, issue["type"])
+                row["issues"][group] = row["issues"].get(group, 0) + 1
         else:
             continue
 
@@ -193,9 +244,24 @@ def summarize(entries):
             continue
         if event_time > row.get("last_event_at", ""):
             row["last_event_at"] = event_time
+    for row in diagnostics.values():
+        groups = sorted(row["issues"].items(), key=lambda item: (-item[1], item[0]))
+        row["issues"] = [
+            {"path": path, "type": code, "count": count}
+            for (path, code), count in groups[:MAX_ISSUE_GROUPS]
+        ]
     return {
         "providers": sorted(providers.values(), key=lambda r: r["provider"]),
         "routes": sorted(routes.values(), key=lambda r: -r["requests"]),
+        "agent_diagnostics": sorted(
+            diagnostics.values(),
+            key=lambda r: (
+                AGENT_KINDS.index(r["kind"]),
+                -r["events"],
+                r["stage"],
+                r["error_type"],
+            ),
+        ),
         "observed_events": len(seen),
     }
 
