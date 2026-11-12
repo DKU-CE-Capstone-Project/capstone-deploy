@@ -36,6 +36,10 @@ const dailyViews = {
   },
 };
 let dailyUsage;
+const diagnosticKinds = {
+  agent_output_validation: "응답 형식 오류",
+  agent_output_normalized: "논거 초과분 제외",
+};
 function costQuery() {
   return `gcp_period=${costPeriods.gcp}&external_period=${costPeriods.external}`;
 }
@@ -110,6 +114,7 @@ function cell(row, text, detail) {
     td.append(small);
   }
   row.append(td);
+  return td;
 }
 function tokens(row, key) {
   const n = row.token_observations[key];
@@ -124,6 +129,19 @@ function tokens(row, key) {
   return n
     ? `${row.token_sums[key].toLocaleString()}${n < total ? " (일부)" : ""}`
     : "미제공";
+}
+function diagnosticRow(row) {
+  const tr = document.createElement("tr");
+  cell(tr, row.stage, row.operation);
+  cell(
+    tr,
+    Object.hasOwn(diagnosticKinds, row.kind) ? diagnosticKinds[row.kind] : row.kind,
+    row.error_type === "—" ? "" : row.error_type,
+  );
+  cell(tr, row.events.toLocaleString());
+  cell(tr, row.kind === "agent_output_normalized" ? row.discarded_arguments.toLocaleString() : "—");
+  cell(tr, row.issues.map((issue) => `${issue.path || "(최상위)"} · ${issue.type} ×${issue.count}`).join("\n") || "—").className = "issue-list";
+  return tr;
 }
 const metricNames = { cpu: "CPU", memory: "메모리", disk: "디스크" };
 const minute = 60000;
@@ -429,9 +447,11 @@ async function lookupReportJob(event) {
   const status = $("report-job-status");
   const results = $("report-job-results");
   const rows = $("report-job-rows");
+  const diagnostics = $("report-job-diagnostic-rows");
   status.hidden = false;
   results.hidden = true;
   rows.replaceChildren();
+  diagnostics.replaceChildren();
   input.disabled = button.disabled = true;
   status.textContent = "작업 사용량 조회 중…";
   try {
@@ -446,8 +466,21 @@ async function lookupReportJob(event) {
       status.textContent = "SQLite 수집기가 연결된 관리자에서 작업별 사용량을 조회할 수 있습니다.";
       return;
     }
-    if (data.state === "no_data") {
+    // "no_data" describes provider calls only. A response can be rejected
+    // without one, for example when no provider is configured.
+    const noCalls = data.state === "no_data";
+    const diagnosticRows = data.diagnostics || [];
+    if (noCalls && !diagnosticRows.length) {
       status.textContent = "이 작업 ID로 수집된 사용량이 없습니다.";
+      return;
+    }
+    for (const row of diagnosticRows) diagnostics.append(diagnosticRow(row));
+    $("report-job-diagnostics").hidden = !diagnosticRows.length;
+    $("report-job-usage").hidden = noCalls;
+    if (noCalls) {
+      const count = diagnosticRows.reduce((total, row) => total + row.events, 0);
+      status.textContent = `${data.job_id} · 수집된 외부 API 호출 없음 · 에이전트 응답 진단 ${count.toLocaleString()}건`;
+      results.hidden = false;
       return;
     }
     for (const row of data.rows) {

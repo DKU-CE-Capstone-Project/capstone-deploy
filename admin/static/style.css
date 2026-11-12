@@ -370,6 +370,10 @@ button:disabled {
 .panel-title p {
   font-size: 11px;
 }
+.issue-list {
+  white-space: pre-line;
+  line-height: 1.7;
+}
 .daily-actions {
   display: flex;
   flex-wrap: wrap;

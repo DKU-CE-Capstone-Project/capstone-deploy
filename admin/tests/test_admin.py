@@ -125,6 +125,94 @@ def test_embedding_input_counts_remain_separate_from_response_usage():
     assert row["token_observations"]["counted_input_tokens"] == 1
 
 
+def test_agent_output_diagnostics_group_by_stage_without_response_values():
+    def diagnostic(event_id, kind="agent_output_validation", **fields):
+        item = entry(event_id, kind, **fields)
+        item["jsonPayload"] |= {
+            "provider": "application",
+            "operation": "debate_analyst",
+        }
+        del item["jsonPayload"]["model"]
+        return item
+
+    schema = {"stage": "bear", "error_type": "invalid_argument_schema"}
+    result = sources.summarize(
+        [
+            entry("call", stage="bear"),
+            diagnostic(
+                "1",
+                timestamp="2026-11-12T01:00:00Z",
+                validation_issues=[
+                    {"path": ["arguments", 0, "text"], "type": "string_too_long"}
+                ],
+                **schema,
+            ),
+            diagnostic(
+                "2",
+                timestamp="2026-11-12T02:00:00Z",
+                validation_issues=[
+                    {
+                        "path": ["arguments", 3, "text"],
+                        "type": "string_too_long",
+                        "input": "private response",
+                    },
+                    {"path": ["arguments", 1, "evidence"], "type": "too_short"},
+                    {"path": ["arguments", "private response"], "type": "missing"},
+                    {"path": ["arguments", True], "type": "missing"},
+                    {"path": ["arguments"], "type": "private response"},
+                    "private response",
+                ],
+                **schema,
+            ),
+            diagnostic("3", stage="bull", error_type="invalid_json"),
+            diagnostic(
+                "4", "agent_output_normalized", stage="bear", discarded_arguments=2
+            ),
+            diagnostic(
+                "5", "agent_output_normalized", stage="bear", discarded_arguments="3"
+            ),
+            diagnostic("6", "agent_output_unknown", stage="bear"),
+        ]
+    )
+    assert result["agent_diagnostics"] == [
+        {
+            "stage": "bear",
+            "operation": "debate_analyst",
+            "kind": "agent_output_validation",
+            "error_type": "invalid_argument_schema",
+            "events": 2,
+            "discarded_arguments": 0,
+            "issues": [
+                {"path": "arguments.*.text", "type": "string_too_long", "count": 2},
+                {"path": "arguments.*.evidence", "type": "too_short", "count": 1},
+            ],
+            "last_event_at": "2026-11-12T02:00:00.000000+00:00",
+        },
+        {
+            "stage": "bull",
+            "operation": "debate_analyst",
+            "kind": "agent_output_validation",
+            "error_type": "invalid_json",
+            "events": 1,
+            "discarded_arguments": 0,
+            "issues": [],
+        },
+        {
+            "stage": "bear",
+            "operation": "debate_analyst",
+            "kind": "agent_output_normalized",
+            "error_type": "—",
+            "events": 2,
+            "discarded_arguments": 2,
+            "issues": [],
+        },
+    ]
+    assert "private" not in json.dumps(result)
+    (row,) = result["providers"]
+    assert row["sdk_calls"] == 1 and row["errors"] == 0
+    assert sources.summarize([entry("1")])["agent_diagnostics"] == []
+
+
 def test_usage_pagination_and_cap_are_explicit(monkeypatch):
     monkeypatch.setenv("GCP_PROJECT_ID", "fixture-project")
     monkeypatch.setenv("GCP_VM_INSTANCE_ID", "123")

@@ -239,12 +239,23 @@
           </form>
           <p id="report-job-status" class="footnote" role="status" hidden></p>
           <div id="report-job-results" hidden>
-            <p id="report-job-totals" class="footnote"></p>
-            <div class="table-wrap">
-              <table aria-label="리포트 작업의 단계별 사용량과 예상 비용">
-                <thead><tr><th>단계</th><th>공급자 / 모델</th><th>관측 호출</th><th>입력 토큰</th><th>출력 토큰</th><th>예상 비용</th></tr></thead>
-                <tbody id="report-job-rows"></tbody>
-              </table>
+            <div id="report-job-usage">
+              <p id="report-job-totals" class="footnote"></p>
+              <div class="table-wrap">
+                <table aria-label="리포트 작업의 단계별 사용량과 예상 비용">
+                  <thead><tr><th>단계</th><th>공급자 / 모델</th><th>관측 호출</th><th>입력 토큰</th><th>출력 토큰</th><th>예상 비용</th></tr></thead>
+                  <tbody id="report-job-rows"></tbody>
+                </table>
+              </div>
+            </div>
+            <div id="report-job-diagnostics" hidden>
+              <p class="footnote">에이전트 응답 진단 · 응답 본문은 수집하지 않습니다. 오류 위치는 필드 경로와 검증 유형 코드이며 목록 순번은 *로 묶습니다.</p>
+              <div class="table-wrap">
+                <table aria-label="리포트 작업의 에이전트 응답 진단">
+                  <thead><tr><th>단계 / 작업</th><th>구분</th><th>건수</th><th>제외 논거</th><th>오류 위치 · 유형 (상위 5개)</th></tr></thead>
+                  <tbody id="report-job-diagnostic-rows"></tbody>
+                </table>
+              </div>
             </div>
           </div>
         </section>
