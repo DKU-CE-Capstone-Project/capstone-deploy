@@ -143,34 +143,6 @@
           확인된 값만 합산하며 캐시 입력·사고 토큰은 중복 합산하지 않습니다.
           공급자 청구 금액과 다를 수 있습니다.
         </div>
-        <div class="panel-title panel-section">
-          <div>
-            <h2 id="agent-diagnostics-title">에이전트 응답 진단</h2>
-            <p>단계별 응답 형식 오류, 논거 초과분 제외 및 조회 기간 내 마지막 기록</p>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table aria-labelledby="agent-diagnostics-title">
-            <thead>
-              <tr>
-                <th>단계 / 작업</th>
-                <th>구분</th>
-                <th>최근 기록 (KST)</th>
-                <th>건수</th>
-                <th>제외 논거</th>
-                <th>오류 위치 · 유형 (상위 5개)</th>
-              </tr>
-            </thead>
-            <tbody id="agent-diagnostics"></tbody>
-          </table>
-        </div>
-        <div id="agent-diagnostics-empty" class="empty" hidden>
-          수집된 에이전트 응답 진단이 없습니다.
-        </div>
-        <div class="footnote">
-          응답 본문과 논거 내용은 수집하지 않습니다. 오류 위치는 필드 경로와 검증 유형 코드이며
-          목록 순번은 *로 묶습니다. 외부 호출 수와 비용에는 더하지 않습니다.
-        </div>
       </section>
       <section id="view-service-api" class="panel" role="tabpanel" aria-labelledby="tab-service-api" tabindex="0" hidden>
         <div class="panel-title">
@@ -277,7 +249,7 @@
               </div>
             </div>
             <div id="report-job-diagnostics" hidden>
-              <p class="footnote">에이전트 응답 진단</p>
+              <p class="footnote">에이전트 응답 진단 · 응답 본문은 수집하지 않습니다. 오류 위치는 필드 경로와 검증 유형 코드이며 목록 순번은 *로 묶습니다.</p>
               <div class="table-wrap">
                 <table aria-label="리포트 작업의 에이전트 응답 진단">
                   <thead><tr><th>단계 / 작업</th><th>구분</th><th>건수</th><th>제외 논거</th><th>오류 위치 · 유형 (상위 5개)</th></tr></thead>

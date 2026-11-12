@@ -130,7 +130,7 @@ function tokens(row, key) {
     ? `${row.token_sums[key].toLocaleString()}${n < total ? " (일부)" : ""}`
     : "미제공";
 }
-function diagnosticRow(row, withTime) {
+function diagnosticRow(row) {
   const tr = document.createElement("tr");
   cell(tr, row.stage, row.operation);
   cell(
@@ -138,7 +138,6 @@ function diagnosticRow(row, withTime) {
     Object.hasOwn(diagnosticKinds, row.kind) ? diagnosticKinds[row.kind] : row.kind,
     row.error_type === "—" ? "" : row.error_type,
   );
-  if (withTime) cell(tr, stamp(row.last_event_at));
   cell(tr, row.events.toLocaleString());
   cell(tr, row.kind === "agent_output_normalized" ? row.discarded_arguments.toLocaleString() : "—");
   cell(tr, row.issues.map((issue) => `${issue.path || "(최상위)"} · ${issue.type} ×${issue.count}`).join("\n") || "—").className = "issue-list";
@@ -325,14 +324,6 @@ function render(data) {
     ? `${internalCacheHits.toLocaleString("ko-KR")}회`
     : "—";
   $("usage-empty").hidden = usageRows.children.length > 0;
-  const diagnostics = $("agent-diagnostics");
-  diagnostics.replaceChildren();
-  for (const row of usage.agent_diagnostics || []) diagnostics.append(diagnosticRow(row, true));
-  $("agent-diagnostics-empty").hidden = diagnostics.children.length > 0;
-  // A collector from before this table omits the field; do not present that as "none".
-  $("agent-diagnostics-empty").textContent = usage.state === "ok" && !usage.agent_diagnostics
-    ? "수집기가 에이전트 응답 진단을 제공하지 않습니다. 수집기 버전을 확인해 주세요."
-    : "수집된 에이전트 응답 진단이 없습니다.";
   $("routes").replaceChildren();
   for (const row of usage.routes || []) {
     const tr = document.createElement("tr");
@@ -483,7 +474,7 @@ async function lookupReportJob(event) {
       status.textContent = "이 작업 ID로 수집된 사용량이 없습니다.";
       return;
     }
-    for (const row of diagnosticRows) diagnostics.append(diagnosticRow(row, false));
+    for (const row of diagnosticRows) diagnostics.append(diagnosticRow(row));
     $("report-job-diagnostics").hidden = !diagnosticRows.length;
     $("report-job-usage").hidden = noCalls;
     if (noCalls) {

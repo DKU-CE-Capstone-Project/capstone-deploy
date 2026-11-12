@@ -370,9 +370,6 @@ button:disabled {
 .panel-title p {
   font-size: 11px;
 }
-.panel-section {
-  border-top: 1px solid #e0e8eb;
-}
 .issue-list {
   white-space: pre-line;
   line-height: 1.7;
