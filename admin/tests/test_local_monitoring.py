@@ -389,6 +389,15 @@ def test_cut_and_dropped_counts_and_judge_attempts_are_stored_for_the_job(
     assert (bear["invalid_arguments"], bear["truncated_fields"], bear["attempts"]) == (0, 0, [])
 
 
+def test_ledger_sorts_in_memory_because_the_collector_has_no_temp_directory(tmp_path):
+    """2026-11-24: cumulative and monthly costs failed with "disk I/O error" in production."""
+    ledger = usage_store.UsageStore(tmp_path / "ledger.sqlite3")
+    ledger.initialize()
+    with ledger.connect() as db:
+        # 2 is MEMORY; the default 0 lets a large sort open a temp file.
+        assert db.execute("PRAGMA temp_store").fetchone() == (2,)
+
+
 def test_daily_requests_use_korean_midnight_and_paginate_matching_events(
     tmp_path, monkeypatch
 ):
