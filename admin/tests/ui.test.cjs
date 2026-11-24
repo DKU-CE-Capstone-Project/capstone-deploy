@@ -86,6 +86,7 @@ test('partial token coverage, HTTP versus SDK, and log cap stay visible', () => 
   assert.match(nodes.get('notice').textContent, /일부 이벤트/);
 });
 
+// Rows as an older collector sends them: no attempt list and only the first count.
 function diagnostics() {
   return [
     {stage:'bear', operation:'debate_analyst', kind:'agent_output_validation', error_type:'invalid_argument_schema', events:2, discarded_arguments:0,
@@ -115,20 +116,58 @@ test('report job lookup shows that job\'s agent diagnostics and hides the table 
   assert.equal(rejected[1].textContent, '응답 형식 오류');
   assert.equal(rejected[1].children[0].textContent, 'invalid_argument_schema');
   assert.equal(rejected[2].textContent, '2');
+  assert.equal(rejected[2].children.length, 0);
   assert.equal(rejected[3].textContent, '—');
   assert.equal(rejected[4].textContent, 'arguments.*.text · string_too_long ×2\n(최상위) · missing ×1');
   assert.equal(rejected[4].className, 'issue-list');
   assert.equal(trimmed[0].textContent, '<b>bull</b>');
-  assert.equal(trimmed[1].textContent, '논거 초과분 제외');
+  assert.equal(trimmed[1].textContent, '논거 정리');
   assert.equal(trimmed[1].children.length, 0);
   assert.equal(trimmed[2].textContent, '1,200');
-  assert.equal(trimmed[3].textContent, '3,400');
+  assert.equal(trimmed[3].textContent, '상한 초과 제외 3,400');
   assert.equal(trimmed[4].textContent, '—');
   input.value = plainId;
   await submit();
   assert.equal(nodes.get('report-job-results').hidden, false);
   assert.equal(nodes.get('report-job-diagnostics').hidden, true);
   assert.equal(nodes.get('report-job-diagnostic-rows').children.length, 0);
+});
+
+test('agent diagnostics show cut and dropped counts and which judge call failed', async () => {
+  const jobId = 'e583a4d5-f11f-4b9c-ab12-a1367d41739d';
+  const rows = [
+    {stage:'judge', operation:'debate_judge', kind:'agent_output_validation', error_type:'unused_evidence', events:2,
+      discarded_arguments:0, invalid_arguments:0, truncated_fields:0, attempts:[{attempt:1, count:1}, {attempt:2, count:1}],
+      issues:[{path:'stock_impacts.*.evidence_news_ids', type:'unused_evidence', count:2}]},
+    {stage:'bull', operation:'debate_analyst', kind:'agent_output_normalized', error_type:'—', events:1,
+      discarded_arguments:0, invalid_arguments:1, truncated_fields:1200, attempts:[],
+      issues:[{path:'arguments.*.text', type:'string_too_long', count:2}]},
+    // Stored before the collector kept the newer counts: the worker changed
+    // the response, but how is unknown.
+    {stage:'bear', operation:'debate_analyst', kind:'agent_output_normalized', error_type:'—', events:1,
+      discarded_arguments:0, invalid_arguments:0, truncated_fields:0, attempts:[], issues:[]},
+  ];
+  const {context, nodes} = setup('#cost', async () => ({ok:true, json:async () => ({
+    state:'ok', job_id:jobId, estimated_usd:0, calls:0, priced_calls:0, unpriced_calls:0, logs_complete:true, rows:[], diagnostics:rows,
+  })}));
+  context.document.getElementById('report-job-id').value = jobId;
+  await nodes.get('report-job-form').submit({preventDefault() {}});
+  const [judge, cut, unknown] = nodes.get('report-job-diagnostic-rows').children.map(row => row.children);
+  assert.equal(judge[0].textContent, 'judge');
+  assert.equal(judge[0].children[0].textContent, 'debate_judge');
+  assert.equal(judge[1].textContent, '응답 형식 오류');
+  assert.equal(judge[1].children[0].textContent, 'unused_evidence');
+  assert.equal(judge[2].textContent, '2');
+  assert.equal(judge[2].children[0].textContent, '1차 1건 · 2차 1건');
+  assert.equal(judge.length, 5);
+  assert.equal(judge[3].textContent, '—');
+  assert.equal(judge[4].textContent, 'stock_impacts.*.evidence_news_ids · unused_evidence ×2');
+  assert.equal(cut[1].textContent, '논거 정리');
+  assert.equal(cut[2].children.length, 0);
+  assert.equal(cut[3].textContent, '형식 오류 제외 1\n자른 필드 1,200');
+  assert.equal(cut[3].className, 'change-list');
+  assert.equal(cut[4].textContent, 'arguments.*.text · string_too_long ×2');
+  assert.equal(unknown[3].textContent, '미수집');
 });
 
 test('a job with diagnostics but no provider call shows them instead of reporting no usage', async () => {

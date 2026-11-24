@@ -38,8 +38,14 @@ const dailyViews = {
 let dailyUsage;
 const diagnosticKinds = {
   agent_output_validation: "응답 형식 오류",
-  agent_output_normalized: "논거 초과분 제외",
+  agent_output_normalized: "논거 정리",
 };
+// What the worker did to a response it kept.
+const diagnosticCounts = [
+  ["discarded_arguments", "상한 초과 제외"],
+  ["invalid_arguments", "형식 오류 제외"],
+  ["truncated_fields", "자른 필드"],
+];
 function costQuery() {
   return `gcp_period=${costPeriods.gcp}&external_period=${costPeriods.external}`;
 }
@@ -138,8 +144,17 @@ function diagnosticRow(row) {
     Object.hasOwn(diagnosticKinds, row.kind) ? diagnosticKinds[row.kind] : row.kind,
     row.error_type === "—" ? "" : row.error_type,
   );
-  cell(tr, row.events.toLocaleString());
-  cell(tr, row.kind === "agent_output_normalized" ? row.discarded_arguments.toLocaleString() : "—");
+  // An older collector sends neither the attempt list nor the newer counts.
+  const attempts = (row.attempts || []).map((item) => `${item.attempt}차 ${item.count.toLocaleString()}건`).join(" · ");
+  cell(tr, row.events.toLocaleString(), attempts);
+  let changes = "—";
+  if (row.kind === "agent_output_normalized") {
+    // The worker only reports a response it changed, so no count at all means
+    // the event was stored before the collector kept the newer ones.
+    changes = diagnosticCounts.filter(([key]) => row[key] > 0)
+      .map(([key, label]) => `${label} ${row[key].toLocaleString()}`).join("\n") || "미수집";
+  }
+  cell(tr, changes).className = "change-list";
   cell(tr, row.issues.map((issue) => `${issue.path || "(최상위)"} · ${issue.type} ×${issue.count}`).join("\n") || "—").className = "issue-list";
   return tr;
 }
