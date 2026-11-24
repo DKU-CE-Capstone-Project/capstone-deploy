@@ -374,6 +374,11 @@ button:disabled {
   white-space: pre-line;
   line-height: 1.7;
 }
+/* One "label count" per line; a narrow column must not split a line in two. */
+.change-list {
+  white-space: pre;
+  line-height: 1.7;
+}
 .daily-actions {
   display: flex;
   flex-wrap: wrap;

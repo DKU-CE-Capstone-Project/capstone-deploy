@@ -16,6 +16,7 @@ from periods import KST, parse_start, window
 from pricing import COST_FIELDS, estimate_external
 from sources import (
     AGENT_KINDS,
+    DIAGNOSTIC_COUNTS,
     TOKEN_FIELDS,
     iso,
     now,
@@ -106,7 +107,7 @@ def event_row(record, received_at):
         value = event.get(field)
         if isinstance(value, str) and len(value) <= 160 and LABEL.fullmatch(value):
             payload[field] = value
-    for field in ("discarded_arguments",) if diagnostic else TOKEN_FIELDS:
+    for field in (*DIAGNOSTIC_COUNTS, "attempt") if diagnostic else TOKEN_FIELDS:
         value = event.get(field)
         if type(value) is int and 0 <= value < 2**63:
             payload[field] = value

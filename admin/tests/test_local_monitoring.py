@@ -267,6 +267,128 @@ def test_agent_diagnostics_are_kept_without_changing_calls_or_costs(
     assert ledger.job_usage(job_id)["diagnostics"][0]["events"] == 1
 
 
+def test_cut_and_dropped_counts_and_judge_attempts_are_stored_for_the_job(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        usage_store, "now", lambda: datetime(2026, 11, 24, 10, tzinfo=timezone.utc)
+    )
+    job_id = "e583a4d5-f11f-4b9c-ab12-a1367d41739d"
+    base = {
+        "event_type": "econmind_usage",
+        "schema_version": 1,
+        "timestamp": "2026-11-24T09:00:00Z",
+        "job_id": job_id,
+        "provider": "application",
+    }
+    # The shape a worker emits when it cut two over-length argument texts.
+    cut = base | {
+        "event_id": "a" * 32,
+        "kind": "agent_output_normalized",
+        "stage": "bull",
+        "operation": "debate_analyst",
+        "outcome": "success",
+        "discarded_arguments": 0,
+        "invalid_arguments": 1,
+        "truncated_fields": 2,
+        "validation_issues": [
+            {"path": ["arguments", 0, "text"], "type": "string_too_long"},
+            {"path": ["arguments", 1, "text"], "type": "string_too_long"},
+            {"path": ["arguments", 2, "evidence", 0, "sentence"], "type": "string_too_long"},
+        ],
+        "text": "private response",
+    }
+    retried = base | {
+        "event_id": "b" * 32,
+        "kind": "agent_output_validation",
+        "stage": "judge",
+        "operation": "debate_judge",
+        "outcome": "error",
+        "error_type": "unused_evidence",
+        "attempt": 2,
+        "validation_issues": [
+            {"path": ["stock_impacts", 0, "evidence_news_ids"], "type": "unused_evidence"}
+        ],
+    }
+    malformed = cut | {
+        "event_id": "c" * 32,
+        "stage": "bear",
+        "invalid_arguments": "1",
+        "truncated_fields": -2,
+        "attempt": 1.5,
+    }
+    # The attempt of a provider request is not a diagnostic and stays out.
+    call = base | {
+        "event_id": "d" * 32,
+        "kind": "http_attempt",
+        "provider": "diffbot",
+        "operation": "article",
+        "attempt": 2,
+        "truncated_fields": 9,
+    }
+    ledger = usage_store.UsageStore(tmp_path / "ledger.sqlite3")
+    ledger.initialize()
+    ledger.ingest(
+        [
+            {"source": "stdout", "log": json.dumps(event)}
+            for event in (cut, retried, malformed, call)
+        ]
+    )
+
+    with ledger.connect() as db:
+        stored = {
+            row[0]: json.loads(row[1])
+            for row in db.execute("SELECT event_id, payload FROM usage_events")
+        }
+    assert stored["a" * 32] == {
+        "event_type": "econmind_usage",
+        "schema_version": 1,
+        "event_id": "a" * 32,
+        "kind": "agent_output_normalized",
+        "provider": "application",
+        "operation": "debate_analyst",
+        "stage": "bull",
+        "outcome": "success",
+        "discarded_arguments": 0,
+        "invalid_arguments": 1,
+        "truncated_fields": 2,
+        "validation_issues": [
+            {"path": ["arguments", 0, "text"], "type": "string_too_long"},
+            {"path": ["arguments", 1, "text"], "type": "string_too_long"},
+            {"path": ["arguments", 2, "evidence", 0, "sentence"], "type": "string_too_long"},
+        ],
+    }
+    assert stored["b" * 32]["attempt"] == 2
+    assert stored["c" * 32]["discarded_arguments"] == 0
+    assert not {"invalid_arguments", "truncated_fields", "attempt"} & stored["c" * 32].keys()
+    assert not {"attempt", "truncated_fields"} & stored["d" * 32].keys()
+    assert "private" not in json.dumps(stored)
+
+    job = ledger.job_usage(job_id)
+    assert job["calls"] == 1
+    judge, bear, bull = job["diagnostics"]
+    assert (judge["stage"], judge["operation"], judge["error_type"]) == (
+        "judge",
+        "debate_judge",
+        "unused_evidence",
+    )
+    assert judge["attempts"] == [{"attempt": 2, "count": 1}]
+    assert judge["issues"] == [
+        {"path": "stock_impacts.*.evidence_news_ids", "type": "unused_evidence", "count": 1}
+    ]
+    assert (bull["stage"], bull["kind"]) == ("bull", "agent_output_normalized")
+    assert (
+        bull["discarded_arguments"],
+        bull["invalid_arguments"],
+        bull["truncated_fields"],
+    ) == (0, 1, 2)
+    assert bull["issues"] == [
+        {"path": "arguments.*.text", "type": "string_too_long", "count": 2},
+        {"path": "arguments.*.evidence.*.sentence", "type": "string_too_long", "count": 1},
+    ]
+    assert (bear["invalid_arguments"], bear["truncated_fields"], bear["attempts"]) == (0, 0, [])
+
+
 def test_daily_requests_use_korean_midnight_and_paginate_matching_events(
     tmp_path, monkeypatch
 ):

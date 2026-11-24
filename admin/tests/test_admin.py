@@ -182,6 +182,9 @@ def test_agent_output_diagnostics_group_by_stage_without_response_values():
             "error_type": "invalid_argument_schema",
             "events": 2,
             "discarded_arguments": 0,
+            "invalid_arguments": 0,
+            "truncated_fields": 0,
+            "attempts": [],
             "issues": [
                 {"path": "arguments.*.text", "type": "string_too_long", "count": 2},
                 {"path": "arguments.*.evidence", "type": "too_short", "count": 1},
@@ -195,6 +198,9 @@ def test_agent_output_diagnostics_group_by_stage_without_response_values():
             "error_type": "invalid_json",
             "events": 1,
             "discarded_arguments": 0,
+            "invalid_arguments": 0,
+            "truncated_fields": 0,
+            "attempts": [],
             "issues": [],
         },
         {
@@ -204,6 +210,9 @@ def test_agent_output_diagnostics_group_by_stage_without_response_values():
             "error_type": "—",
             "events": 2,
             "discarded_arguments": 2,
+            "invalid_arguments": 0,
+            "truncated_fields": 0,
+            "attempts": [],
             "issues": [],
         },
     ]
@@ -211,6 +220,83 @@ def test_agent_output_diagnostics_group_by_stage_without_response_values():
     (row,) = result["providers"]
     assert row["sdk_calls"] == 1 and row["errors"] == 0
     assert sources.summarize([entry("1")])["agent_diagnostics"] == []
+
+
+def test_agent_output_diagnostics_sum_cut_and_dropped_counts_and_judge_attempts():
+    def diagnostic(event_id, kind, operation, **fields):
+        item = entry(event_id, kind, **fields)
+        item["jsonPayload"] |= {"provider": "application", "operation": operation}
+        del item["jsonPayload"]["model"]
+        return item
+
+    def normalized(event_id, **fields):
+        return diagnostic(
+            event_id, "agent_output_normalized", "debate_analyst", stage="bull", **fields
+        )
+
+    def judge(event_id, **fields):
+        return diagnostic(
+            event_id,
+            "agent_output_validation",
+            "debate_judge",
+            stage="judge",
+            error_type="unused_evidence",
+            **fields,
+        )
+
+    cut = [{"path": ["arguments", 0, "text"], "type": "string_too_long"}]
+    result = sources.summarize(
+        [
+            normalized(
+                "1",
+                discarded_arguments=1,
+                invalid_arguments=2,
+                truncated_fields=3,
+                validation_issues=cut,
+            ),
+            # A worker from before these counts existed.
+            normalized("2", discarded_arguments=2),
+            normalized("3", truncated_fields=2, validation_issues=cut),
+            normalized("4", invalid_arguments="3", truncated_fields=-1),
+            normalized("5", invalid_arguments=True, truncated_fields=1.5),
+            judge("6", attempt=1),
+            judge("7", attempt=2),
+            judge("8", attempt=2),
+            judge("9", attempt=0),
+            judge("10", attempt=10),
+            judge("11", attempt="2"),
+            judge("12", attempt=True),
+            judge("13"),
+        ]
+    )["agent_diagnostics"]
+    assert result == [
+        {
+            "stage": "judge",
+            "operation": "debate_judge",
+            "kind": "agent_output_validation",
+            "error_type": "unused_evidence",
+            "events": 8,
+            "discarded_arguments": 0,
+            "invalid_arguments": 0,
+            "truncated_fields": 0,
+            "attempts": [{"attempt": 1, "count": 1}, {"attempt": 2, "count": 2}],
+            "issues": [],
+        },
+        {
+            "stage": "bull",
+            "operation": "debate_analyst",
+            "kind": "agent_output_normalized",
+            "error_type": "—",
+            "events": 5,
+            "discarded_arguments": 3,
+            "invalid_arguments": 2,
+            "truncated_fields": 5,
+            "attempts": [],
+            "issues": [
+                {"path": "arguments.*.text", "type": "string_too_long", "count": 2}
+            ],
+        },
+    ]
 
 
 def test_usage_pagination_and_cap_are_explicit(monkeypatch):

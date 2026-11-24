@@ -28,6 +28,12 @@ TOKEN_FIELDS = (
 )
 # Diagnostics about an agent's response format. They are not provider calls.
 AGENT_KINDS = ("agent_output_validation", "agent_output_normalized")
+# What a worker did to an analyst response it kept: arguments dropped over the
+# per-target limit, arguments dropped for a format error, and text fields cut
+# to their length limit. Older workers only send the first.
+DIAGNOSTIC_COUNTS = ("discarded_arguments", "invalid_arguments", "truncated_fields")
+# The judge is called again after an unusable response; "attempt" says which call failed.
+MAX_ATTEMPT = 9
 ISSUE_CODE = re.compile(r"[A-Za-z0-9_.-]{1,64}")
 MAX_ISSUES = 8
 MAX_ISSUE_GROUPS = 5
@@ -219,12 +225,18 @@ def summarize(entries):
             row = diagnostics.setdefault(
                 key,
                 dict(zip(("stage", "operation", "kind", "error_type"), key))
-                | {"events": 0, "discarded_arguments": 0, "issues": {}},
+                | {"events": 0}
+                | {field: 0 for field in DIAGNOSTIC_COUNTS}
+                | {"attempts": {}, "issues": {}},
             )
             row["events"] += 1
-            discarded = event.get("discarded_arguments")
-            if type(discarded) is int and discarded >= 0:
-                row["discarded_arguments"] += discarded
+            for field in DIAGNOSTIC_COUNTS:
+                value = event.get(field)
+                if type(value) is int and value >= 0:
+                    row[field] += value
+            attempt = event.get("attempt")
+            if type(attempt) is int and 1 <= attempt <= MAX_ATTEMPT:
+                row["attempts"][attempt] = row["attempts"].get(attempt, 0) + 1
             for issue in validation_issues(event):
                 # List positions vary per response. Group by field instead.
                 location = ".".join(
@@ -245,6 +257,10 @@ def summarize(entries):
         if event_time > row.get("last_event_at", ""):
             row["last_event_at"] = event_time
     for row in diagnostics.values():
+        row["attempts"] = [
+            {"attempt": attempt, "count": count}
+            for attempt, count in sorted(row["attempts"].items())
+        ]
         groups = sorted(row["issues"].items(), key=lambda item: (-item[1], item[0]))
         row["issues"] = [
             {"path": path, "type": code, "count": count}
