@@ -133,7 +133,12 @@ class UsageStore:
         self.api_start = parse_start(os.getenv("API_COST_MEASUREMENT_START", ""))
 
     def connect(self):
-        return closing(sqlite3.connect(self.path, timeout=5))
+        db = sqlite3.connect(self.path, timeout=5)
+        # The collector's root filesystem is read-only and it has no temp
+        # directory. A sort too large for SQLite's cache would otherwise go to
+        # a temp file and fail with "disk I/O error".
+        db.execute("PRAGMA temp_store = MEMORY")
+        return closing(db)
 
     def initialize(self):
         with self.connect() as db:
